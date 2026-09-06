@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>torus square hole</title>
+<style>
+	body{margin:0;background:#0b0e14;color:#cfd8e3;font:14px/1.5 ui-monospace,Consolas,monospace;display:flex;flex-direction:column;align-items:center}
+	#bar{padding:8px 12px;display:flex;gap:18px;align-items:center;width:100%;max-width:min(96vw,calc(96vh - 40px))}
+	#hud{color:#7f9bb3;font-size:12px;white-space:pre;margin-left:auto;text-align:right}
+	canvas{background:#0e1420;border:1px solid #22304a;max-width:min(96vw,calc(96vh - 60px));max-height:min(96vw,calc(96vh - 60px));cursor:crosshair;touch-action:none}
+</style>
+</head>
+<body>
+<div id="bar">
+	<label><input type="checkbox" id="rotChk">object rotation (free)</label>
+	<button id="rst">reset</button>
+	<span id="hud"></span>
+</div>
+<canvas id="cv" width="1024" height="1024"></canvas>
+<script>
+'use strict';
+// ============================================================================
+// torus square-hole game
+// field  : 1024x1024, wraps in x and y (toroidal)
+// object : 200x200 square with centered 100x100 hole (50px walls), mass = 1
+// ball   : diameter 10 (r=5), mass = 1, starts at the center of the hole
+// physics: impulse-based, restitution e=1, no friction, no damping.
+//          perfectly elastic -> total kinetic energy is conserved.
+//          ball reflects off the four inner hole edges only; it can never
+//          leave the closed cavity, so outer-surface collisions are unneeded.
+// anti-tunneling (concave-safe): substepping keeps relative motion per step
+//          below the ball radius, plus full positional projection along the
+//          contact normal (velocity untouched -> no energy injected or lost).
+// wrap-xy bug avoidance: physics runs in UNWRAPPED coordinates forever;
+//          wrapping is render-only via 3x3 copies of each body. No boundary
+//          logic touches the simulation, so a square straddling an edge can
+//          never desync from its own collisions.
+// ============================================================================
+
+const W=1024;                    // torus field size (px)
+const O_HALF=100,I_HALF=50;      // outer / inner half sizes (walls = 50 px)
+const WO=2*O_HALF,HO=2*O_HALF,WI=2*I_HALF,HI=2*I_HALF;
+const M_OBJ=1,M_BALL=1;          // masses
+const R=5;                       // ball radius
+const E=1.0;                     // restitution (perfectly elastic)
+
+// analytic moment of inertia of the square ring about its center axis:
+//   I = sigma/12 * [ Ao*(wo^2+ho^2) - Ai*(wi^2+hi^2) ],  sigma = m/(Ao-Ai)
+const AO=WO*HO,AI=WI*HI;
+const SIGMA=M_OBJ/(AO-AI);
+const I_OBJ=(SIGMA/12)*(AO*(WO*WO+HO*HO)-AI*(WI*WI+HI*HI)); // 8333.33...
+
+// inner boundary loop (object-local frame) and per-edge inward normals
+const P=[[-I_HALF,-I_HALF],[I_HALF,-I_HALF],[I_HALF,I_HALF],[-I_HALF,I_HALF]];
+const IN_N=[[0,1],[-1,0],[0,-1],[1,0]];
+
+let rotFree=false;               // checkbox: object rotation on/off
+const obj={x:W/2,y:W/2,vx:0,vy:0,ang:0,w:0};
+const ball={x:W/2,y:W/2,vx:0,vy:0};
+
+function reset(){
+	obj.x=W/2;obj.y=W/2;obj.vx=0;obj.vy=0;obj.ang=0;obj.w=0;
+	ball.x=W/2;ball.y=W/2;
+	const a=0.7,s=260;            // initial launch, px/s
+	ball.vx=s*Math.cos(a);ball.vy=s*Math.sin(a);
+}
+reset();
+
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+const hud=document.getElementById('hud');
+document.getElementById('rotChk').addEventListener('change',function(){
+	rotFree=this.checked;
+	if(!rotFree)obj.w=0;          // lock: freeze angle, drop spin
+});
+document.getElementById('rst').addEventListener('click',reset);
+
+function wrap(v){return((v%W)+W)%W;}
+
+// closest point on segment ab to p (t clamped -> handles corners)
+function closest(ax,ay,bx,by,px,py){
+	const dx=bx-ax,dy=by-ay;
+	const t=Math.max(0,Math.min(1,((px-ax)*dx+(py-ay)*dy)/(dx*dx+dy*dy)));
+	return[ax+t*dx,ay+t*dy];
+}
+
+// one contact pass: project + normal impulse for each inner edge
+function collide(){
+	const ca=Math.cos(obj.ang),sa=Math.sin(obj.ang);
+	for(let i=0;i<4;i++){
+		const p1=P[i],p2=P[(i+1)&3];
+		const ax=obj.x+ca*p1[0]-sa*p1[1],ay=obj.y+sa*p1[0]+ca*p1[1];
+		const bx=obj.x+ca*p2[0]-sa*p2[1],by=obj.y+sa*p2[0]+ca*p2[1];
+		const q=closest(ax,ay,bx,by,ball.x,ball.y);
+		let dx=ball.x-q[0],dy=ball.y-q[1];
+		const d2=dx*dx+dy*dy;
+		if(d2>=R*R)continue;
+		const d=Math.sqrt(d2);
+		let nx,ny;
+		if(d>1e-9){nx=dx/d;ny=dy/d;}
+		else{const n0=IN_N[i];nx=ca*n0[0]-sa*n0[1];ny=sa*n0[0]+ca*n0[1];} // degenerate: edge inward normal
+		ball.x+=nx*(R-d);ball.y+=ny*(R-d);  // full projection, velocity untouched
+		const rx=q[0]-obj.x,ry=q[1]-obj.y;              // rA = contact - obj center
+		const pvx=obj.vx-obj.w*ry,pvy=obj.vy+obj.w*rx;  // object velocity at contact
+		const vn=(ball.vx-pvx)*nx+(ball.vy-pvy)*ny;     // relative normal speed
+		if(vn>=0)continue;                               // separating -> no impulse
+		const invMb=1/M_BALL,invMo=1/M_OBJ;
+		const invIo=rotFree?1/I_OBJ:0;                   // locked rotation: infinite I
+		const rn=rx*ny-ry*nx;                            // cross(rA,n)
+		const j=-(1+E)*vn/(invMb+invMo+invIo*rn*rn);     // impulse magnitude (e=1)
+		const Px=j*nx,Py=j*ny;                           // normal only: no friction
+		ball.vx+=Px*invMb;ball.vy+=Py*invMb;
+		obj.vx-=Px*invMo;obj.vy-=Py*invMo;
+		if(rotFree)obj.w-=invIo*(rx*Py-ry*Px);           // cross(rA,P) -> torque
+	}
+}
+
+let nsub=1,vmax=0;
+function step(dt){
+	vmax=Math.hypot(ball.vx,ball.vy)+Math.hypot(obj.vx,obj.vy)+Math.abs(obj.w)*I_HALF*Math.SQRT2;
+	nsub=Math.max(1,Math.ceil(vmax*dt/4));               // <=4px relative motion per substep (< R)
+	if(nsub>512)nsub=512;
+	const h=dt/nsub;
+	for(let s=0;s<nsub;s++){
+		ball.x+=ball.vx*h;ball.y+=ball.vy*h;             // no forces: exact integration
+		obj.x+=obj.vx*h;obj.y+=obj.vy*h;
+		if(rotFree)obj.ang+=obj.w*h;
+		collide();
+	}
+}
+
+// ---- rendering (wrap is visual only) ---------------------------------------
+function drawRing(x,y){
+	ctx.save();ctx.translate(x,y);ctx.rotate(obj.ang);
+	ctx.beginPath();
+	ctx.rect(-O_HALF,-O_HALF,WO,HO);
+	ctx.rect(-I_HALF,-I_HALF,WI,HI);
+	ctx.fillStyle='#31548c';ctx.fill('evenodd');
+	ctx.strokeStyle='#6ea8ff';ctx.lineWidth=2;
+	ctx.strokeRect(-O_HALF,-O_HALF,WO,HO);
+	ctx.strokeRect(-I_HALF,-I_HALF,WI,HI);
+	ctx.restore();
+}
+function drawBall(x,y){
+	ctx.beginPath();ctx.arc(x,y,R,0,Math.PI*2);
+	ctx.fillStyle='#ffd166';ctx.fill();
+}
+
+let drag=null;
+function toCv(e){const r=cv.getBoundingClientRect();return[(e.clientX-r.left)*W/r.width,(e.clientY-r.top)*W/r.height];}
+cv.addEventListener('pointerdown',function(e){cv.setPointerCapture(e.pointerId);drag={x:0,y:0};const p=toCv(e);drag.x=p[0];drag.y=p[1];});
+cv.addEventListener('pointermove',function(e){if(!drag)return;const p=toCv(e);drag.x=p[0];drag.y=p[1];});
+cv.addEventListener('pointerup',function(){
+	if(!drag)return;
+	let vx=(wrap(ball.x)-drag.x)*3,vy=(wrap(ball.y)-drag.y)*3; // slingshot: pull away from target direction
+	const sp=Math.hypot(vx,vy),MAXV=4000;
+	if(sp>MAXV){vx*=MAXV/sp;vy*=MAXV/sp;}
+	ball.vx=vx;ball.vy=vy;drag=null;
+});
+
+function draw(){
+	ctx.clearRect(0,0,W,W);
+	// grid
+	ctx.strokeStyle='rgba(96,148,210,.13)';ctx.lineWidth=1;
+	for(let g=128;g<W;g+=128){
+		ctx.beginPath();ctx.moveTo(g+0.5,0);ctx.lineTo(g+0.5,W);ctx.stroke();
+		ctx.beginPath();ctx.moveTo(0,g+0.5);ctx.lineTo(W,g+0.5);ctx.stroke();
+	}
+	ctx.fillStyle='rgba(127,155,179,.6)';ctx.font='12px monospace';
+	ctx.fillText('torus field 1024x1024 - wraps x+y (render only; physics unwrapped)',8,16);
+	// 3x3 wrap copies of each body
+	const ox=wrap(obj.x),oy=wrap(obj.y),bx=wrap(ball.x),by=wrap(ball.y);
+	for(let dx=-W;dx<=W;dx+=W)for(let dy=-W;dy<=W;dy+=W){
+		drawRing(ox+dx,oy+dy);
+		drawBall(bx+dx,by+dy);
+	}
+	// slingshot preview
+	if(drag){
+		const vx=(bx-drag.x)*3,vy=(by-drag.y)*3;
+		ctx.strokeStyle='#ffd166';ctx.lineWidth=2;
+		ctx.beginPath();ctx.moveTo(bx,by);ctx.lineTo(drag.x,drag.y);ctx.stroke();
+		const sp=Math.hypot(vx,vy)||1,L=Math.min(140,sp*0.35)/sp;
+		ctx.strokeStyle='#ff6b6b';
+		ctx.beginPath();ctx.moveTo(bx,by);ctx.lineTo(bx+vx*L,by+vy*L);ctx.stroke();
+		ctx.fillStyle='#ffd166';
+		ctx.fillText('v = '+Math.min(sp,4000).toFixed(0)+' px/s',bx+12,by-12);
+	}
+	const keB=0.5*M_BALL*(ball.vx*ball.vx+ball.vy*ball.vy);
+	const keO=0.5*M_OBJ*(obj.vx*obj.vx+obj.vy*obj.vy)+(rotFree?0.5*I_OBJ*obj.w*obj.w:0);
+	hud.textContent='KE '+(keB+keO).toFixed(1)+'  (ball '+keB.toFixed(1)+' / obj '+keO.toFixed(1)+')\nI(obj)='+I_OBJ.toFixed(2)+'  substeps='+nsub+'  vmax='+vmax.toFixed(0)+' px/s';
+}
+
+let last=performance.now();
+function frame(now){
+	let dt=(now-last)/1000;last=now;
+	if(dt>1/30)dt=1/30;         // clamp after tab switch: no giant steps
+	step(dt);
+	draw();
+	requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

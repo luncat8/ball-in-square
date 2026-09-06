@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ball in a Square Hole — Elastic Wrap Simulation</title>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<style>
+	:root { color-scheme: dark; }
+	html, body { height: 100%; margin: 0; }
+	body {
+		background: radial-gradient(circle at 50% -10%, #141c38 0%, #080c1a 55%, #04060e 100%);
+		font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+		color: #e5e7eb;
+		overflow: hidden;
+	}
+	.stage {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex: 1 1 auto;
+		min-height: 0;
+		min-width: 0;
+		padding: 14px;
+	}
+	canvas {
+		width: auto;
+		height: auto;
+		max-width: 100%;
+		max-height: 100%;
+		aspect-ratio: 1 / 1;
+		border-radius: 12px;
+		box-shadow: 0 18px 60px rgba(0,0,0,0.65), inset 0 0 0 1px rgba(255,255,255,0.05);
+		background: #070a16;
+	}
+	.panel { width: 290px; flex: 0 0 auto; }
+	.btn {
+		background: rgba(45,212,191,0.12);
+		border: 1px solid rgba(45,212,191,0.35);
+		color: #ccfbf1;
+		padding: 7px 10px;
+		border-radius: 8px;
+		font-size: 13px;
+		cursor: pointer;
+		transition: all .15s ease;
+		text-align: center;
+	}
+	.btn:hover { background: rgba(45,212,191,0.24); }
+	.btn:active { transform: translateY(1px); }
+	.btn.alt { background: rgba(244,114,182,0.12); border-color: rgba(244,114,182,0.35); color: #fce7f3; }
+	.btn.alt:hover { background: rgba(244,114,182,0.24); }
+	.kbd { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+	.stat { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; line-height: 1.5; }
+	.stat .v { font-family: ui-monospace, monospace; color: #a7f3d0; }
+	.stat .v.amber { color: #fcd34d; }
+	.dot { width: 9px; height: 9px; border-radius: 9999px; display: inline-block; margin-right: 6px; vertical-align: middle; }
+	section.card { background: rgba(255,255,255,0.025); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 12px; }
+	input[type=range] { accent-color: #2dd4bf; width: 100%; }
+	input[type=checkbox] { accent-color: #2dd4bf; }
+	.chk { display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; padding:3px 0; }
+	.note { font-size: 11.5px; color: rgba(229,231,235,0.6); line-height: 1.55; }
+	.h2 { font-size: 12px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color: rgba(229,231,235,0.5); margin-bottom: 8px; }
+	@media (max-width: 900px) {
+		body { overflow: auto; }
+		main { flex-direction: column; }
+		.panel { width: 100%; border-left: none !important; border-top: 1px solid rgba(255,255,255,0.06); }
+		.stage { padding: 10px; }
+	}
+</style>
+</head>
+<body class="h-full flex flex-col">
+	<header class="px-5 py-3 flex items-center gap-4 border-b border-white/5 flex-none">
+		<div>
+			<h1 class="text-base font-semibold tracking-tight leading-tight">Ball in a Square Hole</h1>
+			<p class="text-[11px] text-white/40 leading-tight">Elastic impulse · no loss · no friction · 1024² XY-wrap torus</p>
+		</div>
+		<div class="ml-auto flex items-center gap-5 text-[12px] text-white/60 kbd">
+			<span>|p| <b id="hudP" class="text-teal-300">—</b></span>
+			<span>KE <b id="hudKE" class="text-teal-300">—</b></span>
+			<span>fps <b id="hudFPS" class="text-white/80">—</b></span>
+		</div>
+	</header>
+
+	<main class="flex flex-1 min-h-0">
+		<div class="stage">
+			<canvas id="cv" width="1024" height="1024"></canvas>
+		</div>
+
+		<aside class="panel border-l border-white/5 p-4 flex flex-col gap-4 overflow-auto">
+			<div class="flex gap-2">
+				<button id="btnReset" class="btn flex-1">Reset</button>
+				<button id="btnRandom" class="btn alt flex-1">Random dir</button>
+				<button id="btnPause" class="btn flex-1">Pause</button>
+			</div>
+
+			<section class="card">
+				<div class="h2">Time scale</div>
+				<input id="spd" type="range" min="0" max="2" step="0.05" value="1">
+				<div class="stat mt-1"><span>speed</span><span class="v" id="spdVal">1.00×</span></div>
+			</section>
+
+			<section class="card">
+				<div class="h2">Display</div>
+				<label class="chk"><input type="checkbox" id="togVec" checked> Velocity vectors</label>
+				<label class="chk"><input type="checkbox" id="togCom" checked> Center of mass</label>
+				<label class="chk"><input type="checkbox" id="togTrail" checked> Ball trail</label>
+				<label class="chk"><input type="checkbox" id="togGrid" checked> Grid &amp; wrap seam</label>
+			</section>
+
+			<section class="card">
+				<div class="h2">Live state (conserved)</div>
+				<div class="stat"><span>ball speed</span><span class="v amber" id="stBallV">—</span></div>
+				<div class="stat"><span>ball v(x,y)</span><span class="v amber" id="stBallVxy">—</span></div>
+				<div class="stat"><span>square speed</span><span class="v" id="stSqV">—</span></div>
+				<div class="stat"><span>square v(x,y)</span><span class="v" id="stSqVxy">—</span></div>
+				<div class="border-t border-white/5 my-2"></div>
+				<div class="stat"><span>|momentum| now / init</span><span class="v"><span id="stP">—</span> / <span id="stP0">—</span></span></div>
+				<div class="stat"><span>kinetic energy now / init</span><span class="v"><span id="stKE">—</span> / <span id="stKE0">—</span></span></div>
+				<div class="stat"><span>COM drift speed</span><span class="v" id="stCOMv">—</span></div>
+			</section>
+
+			<section class="card">
+				<div class="h2">Legend</div>
+				<div class="text-[12px] space-y-1">
+					<div><span class="dot" style="background:#2dd4bf"></span>square frame (mass 1)</div>
+					<div><span class="dot" style="background:#f59e0b"></span>ball Ø10 (mass 1)</div>
+					<div><span class="dot" style="background:#f0abfc"></span>system center of mass</div>
+				</div>
+			</section>
+
+			<div class="note">
+				<p class="mb-2">Restitution e = 1 (perfectly elastic, no loss). Every wall hit applies an impulse split by inverse mass, so the ball and square swap their <i>normal</i> velocity. Tangential motion is untouched → no friction.</p>
+				<p>Momentum and kinetic energy stay exactly constant (compare <i>now</i> vs <i>init</i>); the pink COM marker drifts in a straight line, proving momentum is conserved across the torus.</p>
+				<p class="mt-2">Wrap is handled with a wrap-aware relative coordinate, so collisions stay correct when the square crosses the 1024 seam.</p>
+			</div>
+		</aside>
+	</main>
+
+<script>
+"use strict";
+// ---- constants ----------------------------------------------------------
+const FIELD  = 1024;            // torus size (xy-wrap)
+const SQ     = 200;             // square edge
+const HOLE   = 100;             // hole edge
+const OFF    = (SQ - HOLE) / 2; // hole inset from square corner = 50
+const R      = 5;               // ball radius (Ø10)
+const MB     = 1;               // ball mass
+const MS     = 1;               // square mass
+const MT     = MB + MS;         // total mass
+const E      = 1;               // restitution: no loss
+const FIXED  = 1 / 240;         // physics sub-step
+const OFFSETS = [-FIELD, 0, FIELD]; // for seamless torus rendering
+
+// ---- canvas -------------------------------------------------------------
+const cv = document.getElementById("cv");
+const ctx = cv.getContext("2d");
+
+// ---- state --------------------------------------------------------------
+let ball, sq;          // {x,y,vx,vy}  (positions wrapped to [0,FIELD))
+let acc = 0;           // fixed-step accumulator
+let paused = false;
+let timeScale = 1;
+let trail = [];
+let initP = 0, initKE = 0;
+let show = { vec: true, com: true, trail: true, grid: true };
+let fps = 0, fpsAcc = 0, fpsCnt = 0;
+
+// ---- helpers ------------------------------------------------------------
+function mod(n, m) { return ((n % m) + m) % m; }              // true modulo (handles negatives)
+function wrapDelta(a, b, size) {                              // shortest signed a-b on a torus
+	let d = a - b;
+	if (d >  size / 2) d -= size;
+	else if (d < -size / 2) d += size;
+	return d;
+}
+function momentum() { return { x: MB * ball.vx + MS * sq.vx, y: MB * ball.vy + MS * sq.vy }; }
+function momentumMag() { const p = momentum(); return Math.hypot(p.x, p.y); }
+function kineticEnergy() {
+	return 0.5 * MB * (ball.vx * ball.vx + ball.vy * ball.vy)
+	     + 0.5 * MS * (sq.vx * sq.vx + sq.vy * sq.vy);
+}
+
+// ---- init ---------------------------------------------------------------
+function initState(angle) {
+	sq   = { x: (FIELD - SQ) / 2, y: (FIELD - SQ) / 2, vx: 0, vy: 0 };
+	ball = { x: sq.x + SQ / 2,     y: sq.y + SQ / 2,     vx: 0, vy: 0 }; // centered in the hole
+	if (angle === undefined) angle = 0.6;                       // default diagonal (~34°)
+	const sp = 165;                                             // px/s
+	ball.vx = Math.cos(angle) * sp;
+	ball.vy = Math.sin(angle) * sp;
+	trail = [];
+	acc = 0;
+	initP  = momentumMag();
+	initKE = kineticEnergy();
+}
+
+// ---- physics ------------------------------------------------------------
+function step(dt) {
+	// integrate (semi-implicit-ish: positions advance by current velocity)
+	ball.x = mod(ball.x + ball.vx * dt, FIELD);
+	ball.y = mod(ball.y + ball.vy * dt, FIELD);
+	sq.x   = mod(sq.x   + sq.vx   * dt, FIELD);
+	sq.y   = mod(sq.y   + sq.vy   * dt, FIELD);
+
+	// ball position relative to the square's corner, wrap-aware (this is the torus fix)
+	const relX = wrapDelta(ball.x, sq.x, FIELD);
+	const relY = wrapDelta(ball.y, sq.y, FIELD);
+	resolveWalls(relX, relY);
+}
+
+function resolveWalls(relX, relY) {
+	const inner = OFF;          // 50
+	const outer = OFF + HOLE;   // 150
+	let d;
+	// four concave inner walls; normal points INTO the hole, toward the ball
+	d = (inner + R) - relX;        if (d > 0) collide( 1,  0, d); // left
+	d = (relX + R) - outer;        if (d > 0) collide(-1,  0, d); // right
+	d = (inner + R) - relY;        if (d > 0) collide( 0,  1, d); // top
+	d = (relY + R) - outer;        if (d > 0) collide( 0, -1, d); // bottom
+}
+
+function collide(nx, ny, depth) {
+	// relative velocity along the inward normal
+	const vrel = (ball.vx - sq.vx) * nx + (ball.vy - sq.vy) * ny;
+	if (vrel < 0) {                                   // only if approaching
+		const j = -(1 + E) * vrel / (1 / MB + 1 / MS); // impulse magnitude
+		ball.vx += (j / MB) * nx;
+		ball.vy += (j / MB) * ny;
+		sq.vx   -= (j / MS) * nx;
+		sq.vy   -= (j / MS) * ny;
+	}
+	// positional correction, split by inverse mass (slop 0, percent 1 — exact, no rounding)
+	const im = 1 / MB + 1 / MS;
+	const bm = depth * (1 / MB) / im;
+	const sm = depth * (1 / MS) / im;
+	ball.x = mod(ball.x + bm * nx, FIELD);
+	ball.y = mod(ball.y + bm * ny, FIELD);
+	sq.x   = mod(sq.x   - sm * nx, FIELD);
+	sq.y   = mod(sq.y   - sm * ny, FIELD);
+}
+
+// ---- rendering ----------------------------------------------------------
+function drawGrid() {
+	ctx.strokeStyle = "rgba(120,160,255,0.05)";
+	ctx.lineWidth = 1;
+	ctx.beginPath();
+	for (let i = 0; i <= FIELD; i += 64) {
+		ctx.moveTo(i, 0); ctx.lineTo(i, FIELD);
+		ctx.moveTo(0, i); ctx.lineTo(FIELD, i);
+	}
+	ctx.stroke();
+	// wrap seam hint
+	ctx.strokeStyle = "rgba(125,211,252,0.18)";
+	ctx.setLineDash([6, 9]);
+	ctx.strokeRect(0.5, 0.5, FIELD - 1, FIELD - 1);
+	ctx.setLineDash([]);
+}
+
+function drawSquare() {
+	for (const ox of OFFSETS) for (const oy of OFFSETS) {
+		const x = sq.x + ox, y = sq.y + oy;
+		const primary = (ox === 0 && oy === 0);
+		// recessed cavity
+		ctx.fillStyle = "#05070f";
+		ctx.fillRect(x + OFF, y + OFF, HOLE, HOLE);
+		// frame bars
+		ctx.save();
+		if (primary) { ctx.shadowColor = "rgba(45,212,191,0.55)"; ctx.shadowBlur = 18; }
+		ctx.fillStyle = "#2dd4bf";
+		ctx.fillRect(x,             y,             SQ, OFF);          // top
+		ctx.fillRect(x,             y + OFF + HOLE, SQ, OFF);         // bottom
+		ctx.fillRect(x,             y + OFF,       OFF, HOLE);        // left
+		ctx.fillRect(x + OFF + HOLE, y + OFF,      OFF, HOLE);        // right
+		ctx.restore();
+		// concave hole walls + outer outline
+		ctx.strokeStyle = "rgba(186,255,241,0.85)";
+		ctx.lineWidth = 2;
+		ctx.strokeRect(x + OFF, y + OFF, HOLE, HOLE);
+		ctx.strokeStyle = "rgba(45,212,191,0.22)";
+		ctx.lineWidth = 1;
+		ctx.strokeRect(x, y, SQ, SQ);
+	}
+}
+
+function drawTrail() {
+	if (!show.trail || trail.length < 2) return;
+	ctx.lineWidth = 2;
+	ctx.lineCap = "round";
+	for (let i = 1; i < trail.length; i++) {
+		const a = trail[i - 1], b = trail[i];
+		if (Math.abs(a.x - b.x) > FIELD / 2 || Math.abs(a.y - b.y) > FIELD / 2) continue; // skip wrap jumps
+		const t = i / trail.length;
+		ctx.strokeStyle = "rgba(245,158,11," + (t * 0.5).toFixed(3) + ")";
+		ctx.beginPath();
+		ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+		ctx.stroke();
+	}
+}
+
+function drawBall() {
+	for (const ox of OFFSETS) for (const oy of OFFSETS) {
+		const x = ball.x + ox, y = ball.y + oy;
+		ctx.save();
+		ctx.shadowColor = "rgba(245,158,11,0.9)";
+		ctx.shadowBlur = 16;
+		ctx.fillStyle = "#f59e0b";
+		ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.fill();
+		ctx.restore();
+		ctx.fillStyle = "#fde68a";
+		ctx.beginPath(); ctx.arc(x - R * 0.25, y - R * 0.25, R * 0.45, 0, Math.PI * 2); ctx.fill();
+	}
+}
+
+function drawCOM() {
+	const relBX = wrapDelta(ball.x, sq.x, FIELD);
+	const relBY = wrapDelta(ball.y, sq.y, FIELD);
+	const comX = mod(sq.x + (MS * (SQ / 2) + MB * relBX) / MT, FIELD);
+	const comY = mod(sq.y + (MS * (SQ / 2) + MB * relBY) / MT, FIELD);
+	for (const ox of OFFSETS) for (const oy of OFFSETS) {
+		const x = comX + ox, y = comY + oy;
+		ctx.strokeStyle = "#f0abfc";
+		ctx.lineWidth = 2;
+		ctx.beginPath();
+		ctx.moveTo(x - 6, y); ctx.lineTo(x + 6, y);
+		ctx.moveTo(x, y - 6); ctx.lineTo(x, y + 6);
+		ctx.stroke();
+	}
+}
+
+function arrow(x, y, vx, vy, color) {
+	if (vx === 0 && vy === 0) return;
+	const s = 0.42; // px per (px/s)
+	const ex = x + vx * s, ey = y + vy * s;
+	ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 2.5;
+	ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ex, ey); ctx.stroke();
+	const a = Math.atan2(vy, vx), h = 8;
+	ctx.beginPath();
+	ctx.moveTo(ex, ey);
+	ctx.lineTo(ex - h * Math.cos(a - 0.4), ey - h * Math.sin(a - 0.4));
+	ctx.lineTo(ex - h * Math.cos(a + 0.4), ey - h * Math.sin(a + 0.4));
+	ctx.closePath(); ctx.fill();
+}
+
+function drawVectors() {
+	arrow(ball.x, ball.y, ball.vx, ball.vy, "#fbbf24");
+	arrow(sq.x + SQ / 2, sq.y + SQ / 2, sq.vx, sq.vy, "#5eead4");
+}
+
+function render() {
+	ctx.fillStyle = "#070a16";
+	ctx.fillRect(0, 0, FIELD, FIELD);
+	if (show.grid) drawGrid();
+	drawSquare();
+	drawTrail();
+	if (show.com) drawCOM();
+	drawBall();
+	if (show.vec) drawVectors();
+}
+
+// ---- HUD ----------------------------------------------------------------
+function fmt(n, d) { return (n === undefined || !isFinite(n)) ? "—" : n.toFixed(d === undefined ? 2 : d); }
+function $(id) { return document.getElementById(id); }
+function updateHUD() {
+	const pm = momentumMag();
+	const ke = kineticEnergy();
+	$("hudP").textContent  = fmt(pm);
+	$("hudKE").textContent = fmt(ke);
+	$("hudFPS").textContent = Math.round(fps);
+	$("stBallV").textContent   = fmt(Math.hypot(ball.vx, ball.vy));
+	$("stBallVxy").textContent = fmt(ball.vx) + ", " + fmt(ball.vy);
+	$("stSqV").textContent     = fmt(Math.hypot(sq.vx, sq.vy));
+	$("stSqVxy").textContent   = fmt(sq.vx) + ", " + fmt(sq.vy);
+	$("stP").textContent  = fmt(pm);
+	$("stP0").textContent = fmt(initP);
+	$("stKE").textContent  = fmt(ke);
+	$("stKE0").textContent = fmt(initKE);
+	$("stCOMv").textContent = fmt(pm / MT);
+}
+
+// ---- main loop ----------------------------------------------------------
+let last = performance.now();
+function loop(now) {
+	let dt = (now - last) / 1000;
+	last = now;
+	if (dt > 0.25) dt = 0.25;
+
+	fpsAcc += dt; fpsCnt++;
+	if (fpsAcc >= 0.5) { fps = fpsCnt / fpsAcc; fpsAcc = 0; fpsCnt = 0; }
+
+	if (!paused) {
+		acc += dt * timeScale;
+		if (acc > 0.25) acc = 0.25;
+		let guard = 0;
+		while (acc >= FIXED && guard < 3000) { step(FIXED); acc -= FIXED; guard++; }
+		trail.push({ x: ball.x, y: ball.y });
+		if (trail.length > 140) trail.shift();
+	}
+
+	render();
+	updateHUD();
+	requestAnimationFrame(loop);
+}
+
+// ---- controls -----------------------------------------------------------
+function wire() {
+	$("btnReset").addEventListener("click", () => initState(0.6));
+	$("btnRandom").addEventListener("click", () => initState(Math.random() * Math.PI * 2));
+	const pauseBtn = $("btnPause");
+	function setPause(p) { paused = p; pauseBtn.textContent = paused ? "Resume" : "Pause"; }
+	pauseBtn.addEventListener("click", () => setPause(!paused));
+	const spd = $("spd"), spdVal = $("spdVal");
+	spd.addEventListener("input", () => { timeScale = parseFloat(spd.value); spdVal.textContent = timeScale.toFixed(2) + "×"; });
+	const map = { togVec: "vec", togCom: "com", togTrail: "trail", togGrid: "grid" };
+	Object.keys(map).forEach(id => {
+		const el = $(id);
+		el.addEventListener("change", () => { show[map[id]] = el.checked; });
+	});
+	window.addEventListener("keydown", e => {
+		if (e.code === "Space") { e.preventDefault(); setPause(!paused); }
+		else if (e.key === "r" || e.key === "R") initState(0.6);
+		else if (e.key === "n" || e.key === "N") initState(Math.random() * Math.PI * 2);
+	});
+}
+
+// ---- go -----------------------------------------------------------------
+wire();
+initState(0.6);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

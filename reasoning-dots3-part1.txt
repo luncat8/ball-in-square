@@ -1,0 +1,1413 @@
+Let me understand the task. We need an HTML/JS simulation:
+
+Game field 1024x1024 with xy-wrap (periodic boundary conditions presumably, wrapping around).
+Object: square 200x200px with a square hole 100x100 centered (50px walls). Mass = 1.
+Checkbox toggles square rotation (keep moment of inertia). Off: locked rotation, free translation. On: free rotation+translation, moment of inertia computed analytically for shape with hole.
+Ball 10px in hole. Ball moves and reflects from walls. Ball mass = 1. Initial ball position centered in hole. Ensure it properly bounces in concave hole.
+Perfectly elastic, no friction, no energy loss. Ball reflects off inner hole edges only. Prevent tunneling/clipping in concave geometry. Keep impulse. No rounding, no loss.
+This is a physics simulation. Let me think about the implementation.
+
+The field is 1024x1024 with xy-wrap. The square object 200x200 with a hole 100x100 centered (50px walls). The ball 10px in the hole.
+
+Let me think about the physics:
+
+The square object: mass = 1. It's a 200x200 square with a 100x100 hole. So it's a square annulus (square frame).
+Moment of inertia for a square frame (square of side L with square hole of side l, both centered): I = (1/6) * m * (L^4 - l^4) / (L^2 - l^2)... Let me compute.
+For a solid square plate of side a, mass M, about its center axis perpendicular to plane: I = (1/6) M a^2.
+
+For a square frame: outer square side L=200, inner square side l=100. Mass of frame m = 1. The frame is the outer square minus inner square.
+
+I_frame = I_outer - I_inner, where I_outer = (1/6) M_outer L^2, I_inner = (1/6) M_inner l^2, with M_outer/M_inner = L^2/l^2 = 4. And m = M_outer - M_inner.
+
+M_outer = m * L^2/(L^2 - l^2) = m * 40000/(40000-10000) = m * 40000/30000 = (4/3)m. M_inner = m * l^2/(L^2 - l^2) = m * 10000/30000 = (1/3)m.
+
+I_frame = (1/6) * (4/3)m * 40000 - (1/6) * (1/3)m * 10000 = (1/6)m * [ (4/3)*40000 - (1/3)*10000 ] = (1/6)m * [ 160000/3 - 10000/3 ] = (1/6)m * [150000/3] = (1/6)m * 50000 = (50000/6) m = 8333.33 m
+
+So I = (50000/6) m = 25000/3 m ≈ 8333.33.
+
+In terms of L and l: I = (1/6) m (L^4 - l^4)/(L^2 - l^2) = (1/6) m (L^2 + l^2) = (1/6) m (40000 + 10000) = (1/6) m * 50000. Yes matches.
+
+So I = (1/6)(L^2 + l^2) m.
+
+Now the ball is 10px in the hole. Ball reflects off inner hole edges only. The hole is 100x100, ball diameter 10. So ball center is confined to a 90x90 region (from -45 to +45 relative to hole center) if we treat ball as point with radius 5. Actually the inner edges are at ±50 from hole center. Ball radius 5, so ball center range is ±45.
+
+Wait, but the ball is in the hole and reflects off inner hole edges. The hole walls are the inner edges of the square frame. The ball bounces within the 100x100 hole.
+
+But the square can move and rotate! When the square rotates, the hole rotates, and the ball inside... The ball reflects off the inner edges of the hole. As the square moves/rotates, the hole moves/rotates, and the ball can be pushed by the walls.
+
+This is a coupled system: the square frame moves (translation + rotation), and the ball inside bounces off the inner walls. When the ball hits a wall, it exerts an impulse on the square, which changes the square's velocity (linear and angular). The ball reflects.
+
+Also the field has xy-wrap: the square wraps around the 1024x1024 field periodically. So when the square moves off one edge, it wraps to the other side.
+
+The ball - does it also wrap? The ball is inside the hole, so it's confined to the hole. But the hole wraps around the field... Hmm. Actually the ball is inside the hole, so its position is relative to the square. When the square wraps, the ball wraps with it.
+
+Let me think about the coordinate system. Let's use a world coordinate system with periodic wrapping at 1024. The square has a world position (cx, cy) and angle θ. The ball has a world position. The ball is confined to be inside the hole.
+
+Actually, let me think about how to handle the wrapping. The field is 1024x1024 with xy-wrap. So positions wrap modulo 1024. The square center wraps. The ball... if the ball is inside the hole, and the hole wraps, then the ball's position relative to the square is what matters for collision.
+
+Let me think about the collision detection between the ball and the inner hole edges.
+
+The hole is a square of side 100 centered at the square's center, rotated by θ. The ball is a circle of radius 5. The ball must stay inside the hole. The inner walls of the hole are the 4 edges of the 100x100 square.
+
+For collision between a circle (ball) and the inner edges of a rotated square (hole), we need to check if the ball crosses any of the 4 edges. Since the ball is inside, we check distance from ball center to each edge line; if the ball would go past the edge (distance < -radius, i.e., ball center beyond the wall by more than radius), then collision.
+
+Actually for a concave shape (the hole is a convex region actually - the hole is a square, which is convex). Wait, the hole is convex (a square). The ball bounces inside a convex hole. So collision detection: ball center must stay within the square shrunk by radius. The hole is 100x100, so the valid region for ball center is 90x90 (from -45 to 45 in hole-local coords).
+
+Hmm wait, but the task says "concave geometry" and "prevent tunneling/clip in concave geometry". The hole itself is convex. But the frame (square with hole) is concave. The ball interacts with the inner edges (concave from the frame's perspective). Anyway.
+
+Let me set up the simulation with substeps to prevent tunneling.
+
+Let me think about the physics more carefully.
+
+State:
+
+Square: position (x, y), velocity (vx, vy), angle θ, angular velocity ω.
+Ball: position (bx, by), velocity (bvx, bvy).
+Masses: square mass m_s = 1, ball mass m_b = 1.
+
+Moment of inertia of square frame: I = (1/6)(L^2 + l^2) m_s where L=200, l=100. So I = (1/6)(40000+10000) = 50000/6 ≈ 8333.33.
+
+When checkbox is OFF: square has locked rotation (ω = 0, no angular velocity, θ fixed). Free translation. So square can only translate.
+
+When checkbox is ON: square has free rotation + translation. Moment of inertia computed analytically.
+
+Collision between ball and hole inner walls:
+
+The hole is a square centered at square's center, side 100, rotated by θ. The 4 edges. For each edge, the inward normal points toward the hole center.
+
+Let me define hole-local coordinates. Let the square center be at (cx, cy), rotation θ. A point in world coords p maps to local coords: u = (p - c) rotated by -θ. r = R(-θ)(p - c).
+
+The hole in local coords is the square [-50, 50] x [-50, 50]. The ball center in local coords must be within [-45, 45] (since ball radius 5).
+
+The 4 walls:
+
+Right wall: u = 50, inward normal in local = (-1, 0).
+Left wall: u = -50, inward normal = (1, 0).
+Top wall: v = 50, inward normal = (0, -1).
+Bottom wall: v = -50, inward normal = (0, 1).
+For collision, ball center local position r = (u, v). If u > 45 (ball penetrates right wall), collision with right wall. The penetration depth = u - 45. The contact point in world = c + R(θ)(50, v_clamped)... Actually the wall is at u=50, the ball center is at u, so the ball's surface touches the wall at u=50 when ball center at u=45 (ball radius 5).
+
+The collision normal in world = R(θ) * inward_normal. For right wall, inward normal local = (-1,0), so world normal n = R(θ)(-1, 0) = -cos θ, -sin θ... wait R(θ) = [[cos θ, -sin θ],[sin θ, cos θ]]. R(θ)(-1, 0) = (-cos θ, -sin θ). That points from the wall toward the hole center (inward). Good.
+
+The contact point on the wall (world) = c + R(θ)(50, v) where v is the ball's local v coordinate (clamped to [-50,50] but ball inside so v in [-45,45], fine).
+
+Actually for impulse computation, we need the contact point relative to the square center for angular impulse. The contact point in world is P_contact = c + R(θ) * (50, v_local). The lever arm from square center = R(θ)(50, v_local). Actually the lever arm r_vec = P_contact - c = R(θ)(50, v).
+
+Hmm, but the ball center is at local (u, v) with u > 45. The contact point on the wall is at local (50, v). The ball touches the wall at the point along the normal direction from ball center. So contact point = ball_center_world + radius * n (where n is outward normal from wall, i.e., pointing away from hole). Hmm let me be careful.
+
+Let me define: the wall is at u=50. The ball center is at u > 45 (penetrating). The outward normal of the wall (pointing out of the hole, into the frame) is local (1, 0). The ball touches the wall at the point on the ball closest to... actually the contact point is where the ball surface meets the wall. The wall is the plane u=50. The ball center is at (u, v). The point on the ball in direction of outward normal (1,0) is (u+5, v) but that's beyond the wall. The contact point is (50, v) on the wall. In world: P = c + R(θ)(50, v).
+
+The lever arm for the square: r = P - c = R(θ)(50, v).
+
+Now, the relative velocity at contact: v_rel = v_ball - v_square_at_contact. v_square_at_contact = v_square + ω × r (in 2D, ω × r = ω * (-r_y, r_x) for r = (rx, ry), i.e., perpendicular). Actually angular velocity ω (scalar, out of plane), the velocity of a point at r relative to center is ω * k × r = ω * (-r_y, r_x).
+
+v_rel = v_ball - (v_square + ω * (-r_y, r_x)).
+
+We want to apply an impulse J along the normal n (the wall normal, pointing... which direction?). For the ball to bounce off the wall, we need to resolve the relative velocity component along the normal.
+
+The normal direction: Let's use n = outward normal of the wall (pointing out of hole into frame) = R(θ)(1, 0) for right wall. The ball is inside, moving toward the wall. The relative velocity along n: v_n = v_rel · n. If v_n > 0, the ball is approaching the wall (moving in +n direction, toward the wall). We need to reverse it.
+
+Wait, if n points outward (toward the wall from inside), and the ball is approaching the wall, then v_rel · n > 0. We want to make the post-collision relative velocity along n be -e * v_n (for elastic e=1, so -v_n).
+
+Impulse magnitude j such that the change in relative velocity along n is -(1+e) v_n.
+
+For two bodies with masses m1 (ball), m2 (square), and moment of inertia I2, the impulse j applied along n:
+
+The impulse on ball = +j * n (in direction n). Wait, the ball hits the wall; the wall pushes the ball back, i.e., in the -n direction (into the hole). So impulse on ball = -j n where j > 0. Impulse on square = +j n (Newton's third law). And torque on square = r × (j n) = j (r × n), angular impulse = j (r_x n_y - r_y n_x).
+
+Change in ball velocity: Δv_ball = -j n / m_b. Change in square velocity: Δv_square = +j n / m_s. Change in square angular velocity: Δω = j (r × n) / I, where r × n = r_x n_y - r_y n_x.
+
+Change in relative velocity along n: Δv_rel_n = Δv_ball · n - (Δv_square · n + Δω (k×r)·n) = (-j/m_b) - (j/m_s + j (r×n)/I * (k×r)·n)
+
+Hmm, (k×r)·n where k×r = (-r_y, r_x). (k×r)·n = -r_y n_x + r_x n_y = r × n.
+
+So Δv_rel_n = -j/m_b - j/m_s - j (r×n)^2 / I = -j [ 1/m_b + 1/m_s + (r×n)^2 / I ].
+
+We want v_rel_n_post = -e * v_rel_n_pre (e=1 for elastic). So Δv_rel_n = -(1+e) v_rel_n_pre = -2 v_rel_n_pre (if v_rel_n_pre > 0, approaching).
+
+So j [ 1/m_b + 1/m_s + (r×n)^2 / I ] = 2 v_rel_n_pre.
+
+j = 2 v_rel_n_pre / [ 1/m_b + 1/m_s + (r×n)^2 / I ].
+
+Then apply: v_ball += -j n / m_b v_square += j n / m_s ω += j (r×n) / I
+
+Wait, but there's also tangential impulse? For no friction, no tangential impulse. So only normal impulse. The tangential components of velocities remain unchanged. Good, that's frictionless.
+
+But wait, we need to be careful: the ball might be penetrating multiple walls at a corner. For a square hole, the ball can hit a corner (two walls at once). We should handle that. Actually with a circle in a square, at a corner the ball contacts both walls simultaneously. We can handle by resolving each wall separately, or by resolving the corner as a single contact with the corner point.
+
+Hmm, for simplicity and correctness, let me handle each of the 4 walls separately in sequence within a substep, or handle corners. Actually, a robust approach: for each wall, check penetration and resolve. If the ball is in a corner (penetrating two walls), resolving one wall then the other sequentially works if we iterate. But there can be issues.
+
+Alternatively, treat the hole as a convex polygon and use a single impulse resolution. But the square is rotating/moving, making it more complex.
+
+Let me think about a simpler robust approach: Since the hole is convex and the ball is a circle, I can compute the penetration and resolve per-wall with iterative substeps. To prevent tunneling, use small time steps.
+
+Actually, let me reconsider. The ball is small (radius 5) and the hole is 100x100. The ball moves fast potentially. To prevent tunneling, I'll use multiple substeps per frame.
+
+Let me think about the corner case. When the ball hits exactly a corner, it's touching two walls. The correct physical behavior: the ball bounces off the corner, reversing its velocity (if the corner is a 90° corner and ball hits dead center). Actually for a ball hitting a corner head-on, it reflects back.
+
+If I resolve walls sequentially: resolve right wall (push ball back in x), then top wall (push back in y). If the ball is penetrating both, after resolving right wall, the ball's x is pushed back, but it might still be penetrating top wall, then resolve top. This works but the impulses interact. With multiple iterations it converges.
+
+Actually, a cleaner approach for convex constraints: use a constraint-based resolution. But let me just do sequential impulse resolution with a few iterations per substep. That's standard in box2d-like engines.
+
+Hmm, but there's a subtlety: the square itself moves during the collision. The sequential impulse should consider the square's velocity changing. With iterative resolution (e.g., 4 iterations), it converges.
+
+Let me simplify: I'll do the following per substep:
+
+For each of the 4 walls, compute ball penetration in local coords. If penetrating, compute impulse and apply to both ball and square. Do this for all 4 walls. Repeat a few times (iterations) to handle corners and the square's response coupling.
+Actually, let me reconsider the whole thing. The square can also move and rotate, and the ball's motion in the hole... When the square rotates, the hole rotates. A ball inside that's not at the center would be flung outward by centrifugal effects, hitting the walls, which then push back and also affect the square's rotation. This is a chaotic coupled system. That's fine, it's the point.
+
+Let me also handle the field wrapping. The square position wraps modulo 1024. The ball position... The ball is inside the hole. When the square wraps, the ball should wrap too. But how to represent?
+
+Option: Keep the square center in [0, 1024) with wrapping. The ball position is stored in world coords. When the square wraps (e.g., x goes from 1025 to -1019... no, wraps to 1), we need to move the ball by the same wrap delta so it stays in the hole.
+
+Actually, let me think. If the square center moves from x=1020 to x=1030, it wraps to x=10 (1030 mod 1024 = 6, hmm let me think: 1030 - 1024 = 6, so wraps to 6). The delta is -1024. The ball should also shift by -1024 in x. So ball x from 1035 to 11.
+
+So when the square crosses a wrap boundary, apply the same wrap shift to the ball. This keeps the ball in the hole in world coords (though world coords wrap, the relative position is preserved).
+
+Actually, a cleaner way: represent the ball position relative to the square center (in local coords), plus the square center in world. But collisions are computed in world... Hmm. Actually if I keep ball in local coords relative to the square, then wrapping the square doesn't affect the ball's local position. But the ball's world velocity needs to account for the square's motion.
+
+Wait, but the ball's velocity is in world space. When the square wraps, if I keep ball local position, the ball's world position = square_center + R(θ) * ball_local. When square wraps, square_center jumps, so ball world position jumps too (correctly, since it wraps with the square). The ball's world velocity stays the same (it's a velocity, not affected by position wrap). That works!
+
+But there's a subtlety: when computing the ball's world position from local, and the square center wraps, the ball world position wraps consistently. Good.
+
+Hmm, but actually there's an issue: the ball's velocity in world space, and the square's velocity in world space. When the square wraps, its position jumps but velocity is continuous. Fine.
+
+Let me reconsider: do I even need the ball in world coords? For collision with the hole walls, I only need the ball relative to the square. For the field wrap, I need to wrap the square and the ball together.
+
+Let me keep it simple: store ball world position and square world position. After each substep, wrap the square position into [0, 1024). Compute the wrap delta (how much it was shifted, e.g., -1024 * k) and apply the same shift to the ball position. This keeps them consistent.
+
+Actually, even simpler: store square position possibly outside [0,1024), and only wrap for rendering. But then the ball position also outside. For rendering, wrap both. Hmm, but then the ball and square are always consistent (no delta needed). Let me do that: don't clamp/wrap during physics; just wrap for rendering. The physics uses unwrapped positions. Wrapping is purely visual.
+
+Wait, but does wrapping affect physics? In a periodic domain, physics is translation-invariant, so wrapping doesn't matter for physics as long as we're consistent. The ball only interacts with the square (its own hole), not with other objects or field boundaries. So wrapping is purely cosmetic! Great. So I just wrap positions for rendering.
+
+So the physics is just: square + ball in an infinite plane, with the ball confined to the square's hole. The field wrap is visual only.
+
+But wait — the ball is confined to the hole. If the square moves, the ball moves with it (via wall collisions). The ball never leaves the hole (ideally). So the ball's world position is always near the square. Rendering both wrapped keeps them together. Good.
+
+Now, one concern: the ball might escape the hole due to numerical issues (tunneling). The task emphasizes preventing tunneling/clipping. So I need small substeps and robust collision.
+
+Let me now think about the initial setup. Ball centered in the hole. Square somewhere in the field, e.g., center at (512, 512). Ball at square center. Initial velocities? Probably zero, or give the ball some initial velocity to make it interesting. Let me give the ball a small initial velocity so it bounces. Actually, let me start with the ball at rest in the center. With no friction and no external forces, nothing moves. That's boring but valid. Let me give the ball an initial velocity, e.g., (100, 50) px/s, so it bounces around the hole.
+
+Hmm, but if the square is locked (rotation off) and has no external forces, the square won't move (it's free translation but no forces). The ball bounces in the hole, and when it hits a wall, it transfers impulse to the square, making the square move. So the square will move! Interesting. Because the ball bounces off walls and pushes the square.
+
+Wait, but if the ball bounces perfectly elastically off the walls and the square is free to move, the system conserves energy and momentum. The ball pushes the square. Over time, energy transfers between ball and square. This is a coupled oscillator-like system. Good, interesting dynamics.
+
+When rotation is on, the square also rotates, and the ball's impacts can spin it.
+
+Let me now write the code.
+
+Let me plan the collision resolution carefully.
+
+For each wall (4 of them), in the square's local frame:
+
+Ball local position: r = R(-θ)(ball_world - square_center).
+Ball local velocity: need to compute. The ball's world velocity v_ball. The square's velocity at the ball's location... Actually for the relative velocity, I need the velocity of the hole wall at the contact point.
+Let me define everything in world frame for the impulse, using the contact point.
+
+For wall i:
+
+Local inward normal (pointing into hole): for right wall (u=+50), inward = (-1, 0). Outward (into frame) = (1, 0).
+World outward normal n_i = R(θ) * outward_local.
+Contact point in local: (50, v) for right wall, where v = ball's local v clamped... Actually the contact point's local coordinate along the wall. For the right wall, the contact is at u=50, v = ball_local_v (the ball's v coordinate). But if the ball is near a corner, v might be beyond [-50,50]? No, the ball is inside, so v in [-45,45] roughly. But during penetration detection, if the ball penetrates the right wall (u > 45) but also v is fine, contact at (50, v).
+Hmm, but what if the ball penetrates a corner, i.e., u > 45 AND v > 45? Then it's hitting the corner region. The contact should be at the corner (50, 50). Let me handle: for the right wall, if v > 50 (ball beyond the top wall too), clamp v to 50? Actually the ball center v won't exceed 45 if we resolve properly. But during a substep with large velocity, it could. Let me clamp the contact point to the wall segment: v_contact = clamp(ball_local_v, -50, 50). Similarly for other walls.
+
+Actually, let me reconsider. For robustness, let me use a slightly different approach: treat the hole as a convex polygon (square) and the ball as a circle. For each edge, compute signed distance. But the moving/rotating square complicates.
+
+Let me just do per-wall sequential impulse with iterations. For each wall:
+
+Compute ball local position r = (u, v).
+Determine penetration for that wall:
+Right wall: pen = u - 45 (positive if penetrating). If pen <= 0, skip.
+Left wall: pen = -45 - u. If pen <= 0, skip.
+Bottom wall: pen = -45 - v. skip if <=0.
+Top wall: pen = v - 45. skip if <=0.
+If penetrating:
+Outward normal local: right=(1,0), left=(-1,0), bottom=(0,-1), top=(0,1).
+World normal n = R(θ) * outward_local.
+Contact point local: right=(50, clamp(v,-50,50)), left=(-50, clamp(v,-50,50)), bottom=(clamp(u,-50,50), -50), top=(clamp(u,-50,50), 50).
+Contact world point P = square_center + R(θ) * contact_local.
+Lever arm r_vec = P - square_center = R(θ) * contact_local.
+Velocity of square at P: v_sq = v_square + ω * (-r_vec_y, r_vec_x).
+Relative velocity: v_rel = v_ball - v_sq.
+v_n = v_rel · n. If v_n > 0 (approaching), we need to resolve. Actually if penetrating, we should resolve regardless of v_n sign (to push out). But for impulse, if v_n <= 0 (already separating), we don't apply impulse (no sticky). But penetration needs to be resolved by pushing out. Hmm.
+Standard approach: apply impulse to make v_rel_n <= 0 (separating or zero) and also push out. But pushing out (position correction) is separate from velocity impulse.
+
+Let me do: compute desired velocity change to make v_rel_n_post = -e * v_rel_n_pre if v_rel_n_pre > 0, else keep. But if penetrating and v_rel_n_pre <= 0 (moving away but still penetrating from previous), we still need position correction.
+
+To keep it simple and robust, I'll do both: velocity impulse (for bounce) + position correction (to resolve penetration). Position correction: move the ball out of the wall along the normal. But moving the ball affects the square too? Position correction should be applied to both to maintain the constraint, but for simplicity, just push the ball out (and optionally the square in opposite). Since the ball is much... both mass 1. Hmm.
+
+Actually, let me use a simpler, well-tested approach: for each penetrating wall, compute the impulse j to resolve velocity, apply to ball and square (with angular), and also do a positional correction by directly moving the ball (and square) to remove penetration.
+
+Let me think about what's cleanest. Given the complexity, let me use the "sequential impulse" with position correction like Box2D's contact solver, but simplified.
+
+Actually, let me step back. Maybe I'm overcomplicating. Let me think about whether the square even moves much. Both masses are 1. The ball bounces in the hole. When the ball hits a wall, it transfers momentum to the square. Since masses are equal, roughly half the momentum transfers. The square moves. Then the ball bounces back, etc. The square drifts.
+
+For the simulation to be stable and correct, I need proper collision response. Let me implement it carefully.
+
+Let me write the collision resolution for one wall contact:
+
+Given:
+
+n: world unit normal (outward from hole, into frame).
+r_vec: lever arm from square center to contact point.
+v_ball, v_square, ω (current).
+m_b = m_s = 1, I = 50000/6.
+Relative velocity v_rel = v_ball - (v_square + ω * perp(r_vec)), where perp(r) = (-r_y, r_x). v_n = v_rel · n.
+
+If v_n > 0 (approaching), compute impulse: j = (1 + e) * v_n / (1/m_b + 1/m_s + (r_vec × n)^2 / I) where r_vec × n = r_vec_x * n_y - r_vec_y * n_x.
+
+Apply: v_ball -= j * n / m_b (ball pushed back into hole, opposite to outward normal) v_square += j * n / m_s ω += j * (r_vec × n) / I
+
+Wait, sign check: The ball approaches the wall (moving in +n direction, outward). The wall pushes the ball in -n direction. So Δv_ball = -j n / m_b. Yes. The ball exerts +j n on the square (the wall is pushed outward). So Δv_square = +j n / m_s. Yes. Torque: the force on the square at contact point is +j n. Torque = r_vec × (j n) = j (r_vec × n). Δω = j (r_vec × n) / I. Yes.
+
+For e = 1 (perfectly elastic), j = 2 v_n / denom.
+
+Now, this handles velocity. For position (penetration), I'll add a correction: after computing penetration depth, move the ball out. But to be correct with the moving square, I should also move the square. Let me do a simple Baumgarte-like stabilization or just directly correct positions.
+
+Position correction: For the ball penetrating the right wall by pen = u - 45 (in local), the ball needs to move in the -u (inward) direction by pen. In world, that's -n * pen (n is outward, so -n is inward). Move ball by -n * pen. But the square also should move to share the correction based on masses/inertia. For simplicity, I'll move the ball fully out (it's a constraint that the ball stays in the hole; pushing the ball out is the primary goal). Actually, if I only move the ball, the square doesn't get position-corrected, which could cause the ball to still be slightly off relative to the square. But since I move the ball in world by -n*pen, and the square's hole is where it is, after moving the ball is exactly at the wall surface. That's fine for the ball constraint. The square's position is governed by its own dynamics.
+
+Hmm, but there's a subtlety: the penetration is measured in the square's local frame. If I move the ball in world by -npen, does that correctly remove the local penetration? The local penetration is along the local u axis. n = R(θ)outward_local. Moving ball by -npen = -R(θ)outward_localpen = R(θ)(-outward_localpen). In local, that's moving by -outward_localpen, which reduces u by pen (for right wall, outward_local=(1,0), so move local by (-pen, 0), reducing u by pen). Yes! Correct.
+
+So position correction: ball_world -= n * pen. Good. (Only move the ball.)
+
+But wait, should I also correct the square's position to account for the fact that the ball pushed it? In a full solver, yes, but for stability, moving the ball out is usually sufficient. Let me also consider moving the square in the opposite direction by a fraction. Actually, to keep it simple and avoid energy injection, let me just move the ball. This is a common simplification (position correction applied to the lighter body, but here both mass 1). Moving only the ball is fine.
+
+Hmm, actually, there's a risk: if I only position-correct the ball and not the square, and the square is moving fast, the ball might get pushed into the wall again. But velocity correction handles that. Let me proceed.
+
+Now, the corner case: ball penetrating two walls simultaneously (e.g., u > 45 and v > 45). Sequential resolution: resolve right wall (push ball in -u), then top wall (push ball in -v). After resolving right wall, ball u <= 45. Then top wall: v > 45, resolve, push v down. Both resolved. But the impulses: the right wall impulse also affects square angular, and the top wall impulse too. The order matters slightly but with multiple iterations it converges. Let me do 3-4 iterations of resolving all 4 walls per substep.
+
+Actually, there's a concern with sequential impulses and the square's changing velocity/position within the substep: when I resolve wall A, I update v_square and ω. Then when resolving wall B, the contact point and relative velocity use the updated v_square and ω. That's fine and actually more correct. But the ball's position also might be corrected. Let me recompute ball local position after each correction (since square might have moved? No, square position doesn't change during impulse, only velocity. Ball position changes due to position correction). Let me recompute local position each time.
+
+Let me structure the substep:
+
+function substep(dt):
+  # integrate square (no external forces, so velocity unchanged, but we apply impulses)
+  # Actually no external forces, so without collisions, velocities constant.
+  # But we need to handle collisions.
+  
+  for iteration in 1..N:
+    for each wall:
+      compute ball local pos r = R(-θ)(ball - square_center)
+      determine penetration and contact
+      if penetrating:
+        # velocity impulse
+        compute v_rel, v_n
+        if v_n > 0:
+          j = ...
+          apply impulse
+        # position correction
+        ball -= n * pen * Baumgarte  (use a factor like 0.2 to be stable)
+  
+  # after collisions, integrate positions
+  square_center += v_square * dt
+  θ += ω * dt
+  ball += v_ball * dt
+Wait, but I should integrate positions first or collisions first? Standard: apply forces, integrate velocities, then resolve collisions, then integrate positions. Or: resolve collisions (velocity + position) then integrate positions. Let me do: within substep, first do collision resolution (velocity impulses + position correction) based on current positions/velocities, then integrate positions by dt. Actually the collision resolution uses current positions which are from the start of the substep. Then we advance positions. Hmm, but if we resolve collisions then advance, the ball might move into a wall during the advance. That's why small dt helps.
+
+Alternatively: advance positions by dt first (semi-implicit Euler), then resolve collisions to push things out and adjust velocities. This is the more standard order (integrate, then resolve). Let me do that:
+
+function substep(dt):
+  # integrate velocities (no external forces, so no change unless we add gravity - none)
+  # integrate positions
+  square_center += v_square * dt
+  θ += ω * dt
+  ball += v_ball * dt
+  
+  # resolve collisions
+  for iteration in 1..N:
+    for each wall:
+      compute penetration
+      if penetrating:
+        velocity impulse (if approaching)
+        position correction
+But wait, after integrating positions, the ball might have tunneled into a wall. The collision resolution pushes it out. With small dt, tunneling is limited. Good.
+
+But there's an issue: after position correction pushes the ball out, and we do multiple iterations, the ball position is corrected multiple times. That's fine.
+
+Hmm, but the position correction should account for the square's movement. When the ball is pushed out by -n*pen, the square doesn't move. But the square also moved during integration. The penetration is measured in the square's local frame after integration, so it's correct relative to the square's new position. Good.
+
+Let me also reconsider: should position correction also move the square? If the ball is pushed out but the square is free to move, physically the ball pushing on the wall would move the square. But position correction is a numerical stabilization, not physical. The physical effect is captured by the velocity impulse. So position correction on the ball only is fine (it's just to prevent penetration). Actually, to be more physically consistent, some engines split the position correction between bodies by mass. But let me keep it simple: correct the ball only. Since both masses are 1, maybe correct both by half each? Let me think... If I move the ball by -npen/2 and the square by +npen/2, the relative separation is pen. This is more symmetric. But it adds velocity to the square via position change, which is unphysical (position correction shouldn't add energy). Moving only the ball is cleaner (no energy, just constraint). Let me move only the ball.
+
+Wait, actually moving only the ball by -n*pen fully removes the penetration. That's correct for the constraint "ball inside hole". Good.
+
+Now, the velocity impulse: I need to be careful not to apply impulse when the ball is separating (v_n <= 0) even if penetrating (position correction handles penetration). This prevents "sticky" walls. Good.
+
+But there's a subtle issue: if the ball is penetrating and moving away (v_n < 0), position correction pushes it out. But if it's deeply penetrating and moving away fast, position correction might not keep up. With small dt and multiple iterations, should be ok.
+
+Let me also handle the case where the ball is exactly at rest against a wall (v_n = 0). No impulse, position correction keeps it at the surface. Fine.
+
+Now let me think about the moment of inertia and the checkbox.
+
+When checkbox OFF: square rotation locked. So ω = 0 always, θ constant (initial 0). The square can still translate. When the ball hits a wall, the impulse on the square causes translation but no rotation (ω forced to 0). So after computing ω += ..., we set ω = 0. Also θ stays 0. So the hole doesn't rotate.
+
+Actually, "locked rotation" means the square can't rotate. So we set ω = 0 after each impulse (or just don't apply angular impulse). And θ is fixed. Let me just zero out ω and not change θ.
+
+When checkbox ON: free rotation + translation. Apply both linear and angular impulses. Use I = (1/6)(L^2 + l^2) * m = (1/6)(200^2 + 100^2) * 1 = (1/6)(40000+10000) = 50000/6 ≈ 8333.33.
+
+Let me double check the moment of inertia formula. The square frame: outer side L=200, inner side l=100, mass m=1.
+
+I = I_outer - I_inner.
+
+For a solid square plate of side a and mass M about central perpendicular axis: I = (1/6) M a^2.
+
+Outer: mass M_o = m * L^2 / (L^2 - l^2) = 1 * 40000/30000 = 4/3. Inner (the hole, mass that's removed): M_i = m * l^2/(L^2 - l^2) = 10000/30000 = 1/3.
+
+I_outer = (1/6) * (4/3) * 200^2 = (1/6)*(4/3)*40000 = (4/18)*40000 = (2/9)*40000 = 80000/9 ≈ 8888.89. I_inner = (1/6) * (1/3) * 100^2 = (1/18)*10000 = 10000/18 = 5000/9 ≈ 555.56. I = 80000/9 - 5000/9 = 75000/9 = 25000/3 ≈ 8333.33.
+
+And (1/6)(L^2 + l^2) = (1/6)(40000+10000) = 50000/6 = 25000/3. ✓.
+
+Great, so I = 25000/3.
+
+Now, let me also think: the ball mass = 1, square mass = 1. The ball radius = 5 (10px diameter). Hole side = 100. So ball center range in local: [-45, 45].
+
+Let me set up the rendering:
+
+Canvas 1024x1024.
+Field wrap: draw square at wrapped position. Draw ball at wrapped position.
+Square: draw as a square 200x200 with a hole 100x100. Use a fill rule: draw filled square, then draw hole with destination-out or just draw the frame as 4 rectangles. Simplest: draw filled rect 200x200, then clear the hole 100x100 (fillRect with transparent). Or use a path with evenodd fill rule.
+Let me draw the square rotated around its center. Use ctx.translate to center, rotate, draw.
+
+For the ball, draw a filled circle radius 5.
+
+Let me handle the wrap for rendering:
+
+wx = ((x % 1024) + 1024) % 1024
+wy = ((y % 1024) + 1024) % 1024
+Now, let me think about performance. The simulation runs at maybe 60fps with substeps. Each substep does 4 walls * iterations. That's cheap. Let me use maybe 8 substeps per frame and 3 iterations. Actually, let me use a fixed timestep with substeps for stability. Let me use dt = 1/120 (or 1/240) with multiple substeps.
+
+Let me use: requestAnimationFrame, compute delta time, accumulate, step with fixed dt = 1/120, with say 2 substeps per step (each dt/2 = 1/240). Or just do substeps directly.
+
+Let me simplify: each frame, do N substeps of dt = frame_dt / N. N = 4. Each substep dt ~ 1/150 s. Ball velocity ~ 100 px/s, so per substep moves ~ 0.67 px, much less than ball radius 5. Good, no tunneling.
+
+Actually, let me make the ball initial velocity moderate, like 150 px/s. With substep dt = 1/240, moves 0.6 px. Fine.
+
+Let me now also consider: the ball might hit the corner exactly. With sequential resolution and iterations, handled.
+
+Another consideration: the "keep moment of inertia" phrase. I think it means when toggling rotation on, compute the moment of inertia analytically (as opposed to some default). And "keep" might mean preserve angular momentum or keep the same moment of inertia value. I'll just compute I analytically and use it.
+
+Wait, re-reading: "implement checkbox that toggle square rotation ( keep moment of inertia )." and "checkbox toggles rotation. off: locked rotation, free translation. on: free rotation+translation, moment of inertia computed analytically for shape with hole".
+
+So the checkbox toggles whether the square can rotate. When off, rotation is locked (ω=0, θ fixed), translation free. When on, free rotation + translation, with I computed analytically. I think "keep moment of inertia" means use the analytically computed I (don't approximate). Got it.
+
+Now, one more thing: when toggling, should angular velocity be preserved or zeroed? If we turn rotation on while the square has ω=0 (it was locked, so ω=0), it starts rotating when hit. If we turn rotation off while the square has some ω (from being on), we should lock it (set ω=0). Let me: when turning off, set ω=0. When turning on, keep current ω (which is 0 if it was off). That's natural.
+
+Actually, since when off we always keep ω=0, turning on just starts allowing ω to change. Turning off zeroes ω. Good.
+
+Let me now write the HTML/JS.
+
+Let me structure:
+
+<!DOCTYPE html>
+<html>
+<head>
+<style>...</style>
+</head>
+<body>
+<canvas id="game" width="1024" height="1024"></canvas>
+<div><input type="checkbox" id="rotToggle"> Allow rotation</div>
+<script>
+...
+</script>
+</body>
+</html>
+Let me write the physics in the script.
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const FIELD = 1024;
+const L = 200; // outer square side
+const l = 100; // hole side
+const R = 5;   // ball radius
+const m_s = 1; // square mass
+const m_b = 1; // ball mass
+const I = (1/6)*(L*L + l*l)*m_s; // moment of inertia of square frame
+
+let square = { x: 512, y: 512, vx: 0, vy: 0, angle: 0, omega: 0 };
+let ball = { x: 512, y: 512, vx: 150, vy: 80 };
+
+let allowRotation = false;
+
+const halfL = L/2, halfl = l/2;
+const ballLimit = halfl - R; // 45
+
+function rot(v, a) {
+  const c = Math.cos(a), s = Math.sin(a);
+  return [c*v[0] - s*v[1], s*v[0] + c*v[1]];
+}
+
+function substep(dt) {
+  // integrate positions (semi-implicit Euler; no external forces)
+  square.x += square.vx * dt;
+  square.y += square.vy * dt;
+  square.angle += square.omega * dt;
+  ball.x += ball.vx * dt;
+  ball.y += ball.vy * dt;
+
+  // collision resolution iterations
+  const iter = 4;
+  for (let k = 0; k < iter; k++) {
+    resolveWalls(dt);
+  }
+}
+Wait, I integrate positions then resolve. But the velocity impulse changes velocities which then won't be integrated until next substep. That's fine (it's within the same substep, the position already integrated). Actually the velocity changes take effect next substep. With small dt that's ok. Alternatively, resolve collisions before integrating positions. Let me think which is better.
+
+Standard order in a velocity-based engine:
+
+Apply forces, integrate velocities.
+Integrate positions.
+Resolve collisions (position + velocity).
+This is what I have. The velocity impulses apply after position integration, affecting the next substep. Since substeps are small, the delay is small. Acceptable.
+
+But there's a subtlety: if I integrate positions first, the ball might tunnel into a wall, then I resolve. Good. If I resolve before integrating, the ball is at the wall surface, then integrates and might go slightly past, then next substep resolves. Both work with small dt. Let me keep integrate-then-resolve.
+
+Hmm, actually, let me reconsider. If I integrate positions first and the ball tunnels deep (large dt), the position correction pushes it out, but the velocity impulse is computed based on the tunneled position's relative velocity, which might be wrong. With small dt, fine.
+
+Let me write resolveWalls:
+
+function resolveWalls(dt) {
+  const c = Math.cos(square.angle), s = Math.sin(square.angle);
+  // ball local position
+  const dx = ball.x - square.x, dy = ball.y - square.y;
+  const u =  c*dx + s*dy;
+  const v = -s*dx + c*dy;
+  // (rotate by -angle)
+
+  // ball local velocity (derivative) - but we also need square velocity at contact
+  // We'll compute in world frame.
+
+  // Define walls: [outwardLocal, sign for penetration, contactLocal function]
+  // We'll handle each.
+
+  // Precompute square velocity at a point given local contact coord (cu, cv):
+  // contact world = square + R(angle)*(cu,cv)
+  // r_vec = R(angle)*(cu,cv)
+  // v_sq = (square.vx, square.vy) + omega * (-r_vec_y, r_vec_x)
+
+  const walls = [
+    { outL: [1, 0],  pen: () => u - ballLimit, contactL: () => [halfl, clamp(v, -halfl, halfl)] }, // right
+    { outL: [-1, 0], pen: () => -ballLimit - u, contactL: () => [-halfl, clamp(v, -halfl, halfl)] }, // left
+    { outL: [0, -1], pen: () => -ballLimit - v, contactL: () => [clamp(u, -halfl, halfl), -halfl] }, // bottom
+    { outL: [0, 1],  pen: () => v - ballLimit, contactL: () => [clamp(u, -halfl, halfl), halfl] }, // top
+  ];
+
+  for (const w of walls) {
+    const pen = w.pen();
+    if (pen <= 0) continue;
+    const [cu, cv] = w.contactL();
+    // world normal
+    const nx = c*w.outL[0] - s*w.outL[1];
+    const ny = s*w.outL[0] + c*w.outL[1];
+    // r_vec = R(angle)*(cu,cv)
+    const rx = c*cu - s*cv;
+    const ry = s*cu + c*cv;
+    // square velocity at contact
+    const svx = square.vx - square.omega * ry;
+    const svy = square.vy + square.omega * rx;
+    // relative velocity
+    const rvx = ball.vx - svx;
+    const rvy = ball.vy - svy;
+    const vn = rvx*nx + rvy*ny;
+    if (vn > 0) {
+      // approaching; apply impulse
+      const rCrossN = rx*ny - ry*nx;
+      const denom = 1/m_b + 1/m_s + (rCrossN*rCrossN)/I;
+      const j = (1+1) * vn / denom; // e=1
+      ball.vx -= j*nx/m_b;
+      ball.vy -= j*ny/m_b;
+      square.vx += j*nx/m_s;
+      square.vy += j*ny/m_s;
+      if (allowRotation) {
+        square.omega += j*rCrossN/I;
+      } else {
+        square.omega = 0;
+      }
+    }
+    // position correction (move ball out)
+    const correction = pen * 0.5; // Baumgarte factor
+    ball.x -= nx * correction;
+    ball.y -= ny * correction;
+  }
+}
+Wait, there's an issue with position correction and iterations: after correcting the ball position for one wall, the local position (u,v) changes, so subsequent walls in the same iteration see updated positions. But I computed (u,v) once at the start of resolveWalls. After position corrections, (u,v) is stale. Within the same iteration, after correcting the right wall (ball.x -= nx*correction), the u changes. But I don't recompute u,v until the next iteration. This could cause over/under correction. With iterations, it should converge. But let me recompute u,v inside the loop after each correction, or just rely on iterations.
+
+Actually, the bigger issue: I compute u,v at the start, then for each wall use that same u,v. If the ball penetrates two walls (corner), both use the original u,v. After correcting right wall (ball.x changes), the top wall's penetration (v - ballLimit) is still based on original v. Since correcting right wall only changes u (moves ball in -x in world, which in local changes both u and v if rotated!). Hmm, if the square is rotated, moving the ball in world -n direction changes both local u and v. So the top wall penetration computed from stale v is wrong.
+
+To be safe, let me recompute the local position after each wall correction. Let me restructure: recompute u,v at the start of each wall's processing. Actually, let me just recompute the ball local position inside the loop before each wall. Since there are only 4 walls and 4 iterations, it's cheap.
+
+Let me restructure resolveWalls to recompute u,v each time:
+
+function resolveWalls(dt) {
+  const c = Math.cos(square.angle), s = Math.sin(square.angle);
+  const walls = [
+    { outL: [1,0] },   // right
+    { outL: [-1,0] },  // left
+    { outL: [0,-1] },  // bottom
+    { outL: [0,1] },   // top
+  ];
+  for (const w of walls) {
+    // recompute local pos
+    const dx = ball.x - square.x, dy = ball.y - square.y;
+    const u =  c*dx + s*dy;
+    const v = -s*dx + c*dy;
+    let pen, cu, cv;
+    if (w.outL[0] === 1) { pen = u - ballLimit; cu = halfl; cv = clamp(v,-halfl,halfl); }
+    else if (w.outL[0] === -1) { pen = -ballLimit - u; cu = -halfl; cv = clamp(v,-halfl,halfl); }
+    else if (w.outL[1] === -1) { pen = -ballLimit - v; cu = clamp(u,-halfl,halfl); cv = -halfl; }
+    else { pen = v - ballLimit; cu = clamp(u,-halfl,halfl); cv = halfl; }
+    if (pen <= 0) continue;
+    ...
+  }
+}
+This recomputes u,v each wall, so corrections propagate. Good.
+
+Now, the clamp function.
+
+Also, I realize there might be an issue with the position correction factor. If pen is large (deep penetration), correcting by pen0.5 each iteration over 4 iterations = pen(1 - 0.5^4) = 0.9375 pen. Not fully corrected. Let me use factor 1.0 for position correction (fully correct) but that can cause "springiness". Actually for constraint-based, full correction each iteration can overshoot if two walls. Let me use a factor like 0.8 and more iterations, or just fully correct. Hmm.
+
+Actually, since I recompute u,v each wall and do 4 iterations, let me use factor 1.0 (full correction) but only correct the ball. If the ball is in a corner (penetrating both walls), iteration 1: right wall fully corrects u (ball.x moves so u = ballLimit). Then top wall: recompute, v still > ballLimit, fully correct v. Both corrected in one iteration. Good. So factor 1.0 works with recompute. But full correction might inject energy? Position correction moves the ball without changing its velocity, which can add energy if the ball was moving toward the wall (it's now at the surface but still has velocity toward the wall, which the velocity impulse handles). Actually position correction alone doesn't add velocity, it just moves position. It could add potential... no, there's no potential. It just fixes constraint. It's fine.
+
+But there's a subtle issue: if the ball is moving away from the wall (vn < 0) but penetrating (shouldn't happen if we always correct, but could from previous frame), position correction moves it out. Fine.
+
+Let me use factor 1.0 but maybe mix: actually, let me use a mix to be safe: correction = pen (full). Let me try full and see.
+
+Hmm, wait. There's a concern: full position correction every iteration could cause the ball to "snap" and jitter, but with small dt the penetration is small, so it's fine.
+
+Let me also reconsider the velocity impulse condition. I apply impulse only if vn > 0 (approaching). But what if the ball is penetrating and vn <= 0 (moving away)? Then no velocity impulse, just position correction. But if it's moving away, it'll naturally exit. Good. But if vn is very negative (moving away fast) and deeply penetrating, position correction might not keep up, but that's a tunneling issue handled by small dt.
+
+Actually, there's a classic problem: if the ball is penetrating and moving toward the wall (vn > 0), we apply impulse to reverse it. But the impulse is computed to make vn_post = -vn. However, the ball is still penetrating (position not yet corrected). After velocity impulse, the ball moves away next substep. Position correction moves it out now. Good.
+
+Let me also double check the sign of the impulse for the square. The ball hits the right wall (outward normal n points +x in local, i.e., out of the hole into the frame). The ball pushes the frame outward (+n direction). So the square gets impulse +j n. Yes, square.vx += j*nx/m_s. And the ball gets -j n. Yes.
+
+The torque: force on square at contact point r_vec is +j n. Torque (scalar, z-component) = r_vec × (j n) = j (rxny - rynx). Δω = torque / I. Yes.
+
+Now, let me think about energy conservation. With e=1 and the impulse formula, the collision should be energy-conserving (for the normal component). The tangential component is unchanged (frictionless), so energy is conserved. Good.
+
+Let me verify the impulse formula conserves energy. For a 1D collision of two masses with one body having rotational inertia, the effective mass along n is 1/(1/m_b + 1/m_s + (r×n)^2/I). The impulse j = (1+e) v_n / (1/m_eff)... wait. Let me re-derive.
+
+Relative velocity along n before: v_n = v_rel · n. After impulse j on ball (-j n) and on square (+j n, torque j r×n): Δv_ball_n = -j/m_b. Δv_square_n = +j/m_s (the square's velocity change along n). Δω = j (r×n)/I, and this affects the contact point velocity along n by Δω (k×r)·n = Δω (r×n) = j (r×n)^2/I. So Δv_rel_n = Δv_ball_n - Δv_square_n - Δω (r×n) [since v_rel = v_ball - v_square_contact, and v_square_contact changes by Δv_square + Δω(k×r)] = -j/m_b - j/m_s - j (r×n)^2/I = -j (1/m_b + 1/m_s + (r×n)^2/I).
+
+Set v_rel_n_post = -e v_rel_n_pre: v_rel_n_pre + Δv_rel_n = -e v_rel_n_pre Δv_rel_n = -(1+e) v_rel_n_pre j (1/m_b + 1/m_s + (r×n)^2/I) = (1+e) v_rel_n_pre j = (1+e) v_rel_n_pre / (1/m_b + 1/m_s + (r×n)^2/I).
+
+Yes, matches. For e=1, j = 2 v_n / denom. Good.
+
+Energy check: This is the standard impulse for elastic collision with rotational inertia. It conserves kinetic energy (for the normal component). Good.
+
+Now let me also make sure the ball doesn't get stuck or tunnel. With substeps, should be fine.
+
+Let me set up the main loop:
+
+let last = performance.now();
+function frame(now) {
+  let dt = (now - last)/1000;
+  last = now;
+  if (dt > 0.05) dt = 0.05; // clamp
+  // substeps
+  const sub = 4;
+  const h = dt/sub;
+  for (let i=0;i<sub;i++) substep(h);
+  render();
+  requestAnimationFrame(frame);
+}
+Wait, but if allowRotation changes, I need to handle. When toggled off, set omega=0. Let me add a listener.
+
+Also, initial conditions: square at (512,512), ball at (512,512) with some velocity. Let me give ball vx=150, vy=80. Actually, let me make it more interesting: ball vx=120, vy=0? Or random. Let me use vx=137, vy=91 (irrational to avoid periodic orbits). Actually any is fine.
+
+Hmm, wait. Let me reconsider the initial velocity. If the ball starts at the center with velocity, it travels to a wall, bounces, pushes the square. Good.
+
+Let me also add a small feature: display FPS or info? Not needed. Keep minimal.
+
+Let me also consider: the square might rotate and the ball's local position... all handled.
+
+Now, one concern: when the square rotates (allowRotation on), and the ball is at the center, the ball has no reason to move outward (centrifugal). Actually, if the ball is exactly at the center and the square rotates, the ball just rotates around... no, the ball at the exact center: the hole rotates around it, but the ball is at the center, so it stays at the center (no wall contact). The ball's velocity in world stays constant (no forces), but the hole rotates around it. So the ball would appear to move relative to the square (it stays at world center while square rotates, so in local coords the ball orbits? No). Wait, if the ball is at the world center and the square center is also at world center, then the ball is at the local center. The hole rotates but the ball is at the center, so it stays at the center. The ball's world velocity is constant (say it was moving), so it drifts. Hmm, if the ball has initial velocity and is at center, it moves in a straight line in world, while the square rotates. The ball will hit walls eventually.
+
+Actually if the ball starts at center with velocity (150, 80), it moves in a straight line (world) until it hits a wall. The square, initially at rest, doesn't move until the ball hits a wall. Then the ball bounces and pushes the square. The square starts translating (and rotating if allowed). Then things get complex. Good.
+
+Let me now also think: is there any external force? No. So total momentum conserved, energy conserved. The square + ball system. Initially square at rest, ball moving. Total momentum = ball's momentum. After bounces, shared. Fine.
+
+Let me write the full code now.
+
+Let me also handle the rendering of the square with hole. I'll draw:
+
+Save context.
+Translate to square world position (wrapped), rotate by angle.
+Fill a 200x200 square (from -100 to 100).
+Clear the hole 100x100 (from -50 to 50) using destination-out.
+Stroke the edges maybe.
+Restore.
+Actually, to make it visible, draw the frame as a filled square with hole cleared, plus maybe draw the inner edges in a different color.
+
+Let me draw:
+
+ctx.fillStyle = '#4a90d9' (blue).
+Draw outer square filled.
+ctx.globalCompositeOperation = 'destination-out'; draw inner square filled (clear hole).
+ctx.globalCompositeOperation = 'source-over';
+Draw inner edges stroke (white or black) for visibility.
+For the ball: yellow circle.
+
+Let me also draw the field boundary? It's a wrap, so maybe draw a border. Optional.
+
+Let me write it.
+
+Actually, let me reconsider the wrap rendering for the square. The square is 200x200. If its center is near the edge (e.g., x=10), part of the square would be off-field. With wrap, we should draw the wrapped parts. But that's complex (split rendering). For simplicity, since the square wraps, I could just draw it at the wrapped center and let it clip at the canvas boundary. But that's not true wrapping visually. Hmm.
+
+The task says "xy-wrap" for the game field. So the square should wrap around. To properly render a wrapped square, I'd need to draw it in pieces. But given the square moves due to ball impacts, it might not move fast enough to cross the field often. Let me implement proper wrap rendering for the square to be safe.
+
+Actually, let me implement a helper to draw a wrapped square: draw the square at its center, and if it extends beyond field edges, draw the wrapped copies. For a 200px square in a 1024 field, it can extend at most 100px beyond an edge. So I draw the square at (cx, cy) and also at (cx ± 1024, cy) and (cx, cy ± 1024) and (cx ± 1024, cy ± 1024), then clip to the field. Actually simpler: draw the square at the wrapped position, and also draw copies offset by ±1024 in x and y, all clipped to the canvas. Since the square is 200px and field 1024, at most one extra copy per axis needed.
+
+Let me do: for dx in {0, -1024, 1024}, for dy in {0, -1024, 1024}: draw square at (cx+dx, cy+dy), but only the part within [0,1024] is visible (canvas clips). Since canvas is exactly 1024x1024, drawing at offset positions and letting clip handle it works. But drawing all 9 copies is wasteful but fine (it's just one square). Actually, drawing the square at cx+1024 when cx is already in [0,1024) means the copy is entirely off-canvas (cx+1024 >= 1024, square spans cx+1024-100 to cx+1024+100, all >= 924, could be partially on canvas if cx < 100). Hmm. Let me just draw the square at the wrapped center position, and additionally draw copies offset by ±1024 in each axis, clipped to canvas. The canvas clipping handles it. 9 draws of a simple square is nothing.
+
+Actually, even simpler and correct: I'll draw the square by first computing its wrapped center, then for the 3x3 grid of offsets, translate and draw. The visible result is the wrapped square. Let me do that.
+
+Similarly for the ball: draw at wrapped position with 3x3 copies. But the ball is inside the square, so it moves with it. Same approach.
+
+Wait, but if I draw 9 copies of the ball, that's wrong—the ball should only appear once (wrapped). But if the ball is near the edge, drawing copies at ±1024 shows the wrapped ball. Since the ball is inside the square and the square wraps, the ball wraps too. Drawing 9 copies clipped to canvas gives the correct wrapped appearance. Good.
+
+Hmm, but actually if the ball is well inside (not near edge), the copies at ±1024 are off-canvas, so only the center copy shows. Good. If near edge, the appropriate copy shows. Good.
+
+Let me implement a wrappedDraw function. Actually, let me just do the 3x3 loop for both square and ball.
+
+Let me write the render:
+
+function render() {
+  ctx.clearRect(0,0,1024,1024);
+  // field bg
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0,0,1024,1024);
+  
+  // wrap helper
+  function wrapDraw(drawFn) {
+    const cx = wrap(square.x), cy = wrap(square.y);
+    for (let dx = -1024; dx <= 1024; dx += 1024) {
+      for (let dy = -1024; dy <= 1024; dy += 1024) {
+        drawFn(cx+dx, cy+dy);
+      }
+    }
+  }
+  
+  // draw square
+  wrapDraw((x, y) => {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(square.angle);
+    // outer
+    ctx.fillStyle = '#3a6ea5';
+    ctx.fillRect(-100, -100, 200, 200);
+    // clear hole
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = '#000';
+    ctx.fillRect(-50, -50, 100, 100);
+    ctx.globalCompositeOperation = 'source-over';
+    // inner edges
+    ctx.strokeStyle = '#cde';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-50, -50, 100, 100);
+    ctx.restore();
+  });
+  
+  // draw ball
+  const bx = wrap(ball.x), by = wrap(ball.y);
+  for (let dx=-1024; dx<=1024; dx+=1024) {
+    for (let dy=-1024; dy<=1024; dy+=1024) {
+      ctx.beginPath();
+      ctx.arc(bx+dx, by+dy, 5, 0, Math.PI*2);
+      ctx.fillStyle = '#ffce3a';
+      ctx.fill();
+    }
+  }
+}
+Wait, the square's hole clearing with destination-out: I draw the outer square filled, then clear the hole. But if I draw 9 copies, each copy clears its own hole. Since copies are offset by 1024, their holes don't overlap the visible field except near edges. Fine.
+
+Hmm, but there's an issue: when I draw the square at cx+dx where dx=1024, and cx is small (say 10), then cx+1024 = 1034, the square spans 934..1134, partially on canvas (934..1024). The hole clear also applies. Fine. And the copy at dx=-1024 (cx-1024 = -1014) spans -1114..-914, off canvas. Fine.
+
+OK. Let me also make sure the wrap function handles negative: ((x % 1024) + 1024) % 1024.
+
+Now let me also think: should the ball's position be wrapped for physics? No, physics uses unwrapped (infinite plane). Only rendering wraps. Good. But wait, if the square moves far (e.g., x = 5000 due to accumulated velocity), the ball is at x=5000 too. Rendering wraps both to same visual position. Fine. But floating point precision for large x could degrade. Over reasonable time, x won't get that large. Let me periodically wrap the square and ball positions to keep them in a reasonable range. Actually, since wrapping is cosmetic and physics is translation-invariant, I can wrap positions every frame without affecting physics (as long as I wrap both square and ball by the same amount). Let me do that to avoid precision issues: after each frame, wrap square.x, square.y, ball.x, ball.y into [0,1024). Since the ball is always near the square, wrapping both by the same integer multiple of 1024 keeps their relative position exact.
+
+Actually, wrapping both by the same amount: square.x -> wrap(square.x), ball.x -> wrap(ball.x). But if square.x = 1030 and ball.x = 1035, wrapping gives square=6, ball=11. Relative preserved (5). Good. If square.x = 1030 and ball.x = 2055 (ball far, but shouldn't happen), wrapping gives square=6, ball=11 (2055 mod 1024 = 2055-2*1024=7, wait 2055-1024=1031, -1024=7, so ball=7). Relative 1 vs original 1025. Different! But ball shouldn't be far from square. So as long as ball stays in hole, wrapping both preserves relative. Good.
+
+So let me wrap positions each frame (after physics) to keep numbers small. This is safe.
+
+Let me add a wrapPositions function:
+
+function wrapPositions() {
+  square.x = wrap(square.x);
+  square.y = wrap(square.y);
+  ball.x = wrap(ball.x);
+  ball.y = wrap(ball.y);
+}
+Call after physics, before render. Then render uses already-wrapped positions (no need to re-wrap in render, but I'll still do the 3x3 draw for edge cases). Actually if positions are already in [0,1024), the 3x3 draw still handles the square extending beyond edges (the square is 200px, so if center at 50, it extends to -50, which wraps to 974). The 3x3 draw handles that. Good. And the ball similarly.
+
+Wait, but if I wrap positions to [0,1024) and then render with 3x3 copies, the ball at wrapped position with copies at ±1024: if ball is at 5, copy at -1019 shows at 5 (since -1019+1024=5). Good, that's the wrapped part. Actually the ball is a point (radius 5), if at x=5, it extends to 0..10, no wrap needed. If at x=3, extends -2..8, the -2 part wraps to 1022. The copy at dx=-1024: ball at 3-1024=-1021, arc from -1026 to -1016, off canvas. Hmm, that doesn't show the wrapped part at 1022.
+
+Wait, I need to think. If ball world x = 3 (after wrapping), the ball's actual world position is 3. The visual should show the ball at x=3, and since it's a small ball near the left edge, part of it (x<0) should appear at the right edge (x~1022). To show that, I'd draw the ball at x=3 AND at x=3+1024=1027 (off canvas, no) ... hmm. Actually the wrapped part of the ball at x in [-5, 0) should appear at x+1024 in [1019, 1024). So I draw the ball at x=3 (visible part 0..8) and at x=3-1024=-1021 (off canvas) ... no.
+
+Let me reconsider. The ball occupies world interval [3-5, 3+5] = [-2, 8]. The part [-2, 0) wraps to [1022, 1024). To render, draw the ball circle at x=3 (shows 0..8) and the ball circle at x=3+1024=1027? No, 1027 is off canvas (canvas 0..1024). The wrapped part is at 1022..1024, which corresponds to drawing the ball at x = 3 - 1024 = -1021? No...
+
+Ugh, let me think clearly. World coordinate x. Visual coordinate on canvas = x mod 1024 (in [0,1024)). The ball is a circle of radius 5 centered at world x=3. Points on the ball have world x in [-2, 8]. Visual = world mod 1024: [-2,0) -> [1022,1024), [0,8] -> [0,8]. So visually, the ball appears as two arcs: one at [1022,1024) (right edge) and one at [0,8] (left edge).
+
+To render this by drawing copies: draw the circle centered at visual x = 3 mod 1024 = 3. This circle spans visual [-2, 8], clipped to [0,8]. That gives the [0,8] part. To get the [1022,1024) part, draw the circle centered at visual x = 3 + 1024 = 1027? That spans [1022, 1032], clipped to [1022, 1024]. Yes! So drawing at x=3 and x=3+1024=1027 gives both parts. But 1027 > 1024, so it's drawing off-canvas to the right, and the clip shows [1022,1024].
+
+Alternatively draw at x=3 and x=3-1024=-1021 (spans [-1026,-1016], off canvas, no). So the correct copies are at x=3 and x=3+1024. Hmm, so my 3x3 loop with dx in {-1024, 0, 1024} draws at 3-1024, 3, 3+1024. The 3-1024 copy is off-canvas (negative), the 3 copy shows [0,8], the 3+1024 copy shows [1022,1024].
+
+So the 3x3 loop works for the ball too, as long as I draw at cx+dx for dx in {-1024,0,1024}. Let me verify: ball at world x=3 (already wrapped to [0,1024)). Draw at 3-1024=-1021 (off), 3 (shows 0..8), 3+1024=1027 (shows 1022..1024). Correct! Good.
+
+But wait, I said I'd wrap positions to [0,1024) each frame. Then in render, ball.x is already in [0,1024). Drawing 3 copies at ball.x + {-1024,0,1024}. The ball.x-1024 copy is off-canvas (negative, since ball.x < 1024, ball.x-1024 < 0, spans ball.x-1024±5, all negative, off canvas). The ball.x copy shows the main part. The ball.x+1024 copy shows the wrapped part if ball.x < 5. Good. So it works.
+
+Similarly for the square: square.x in [0,1024). Draw 3x3 copies. The square is 200px wide. If square.x = 50, square spans [-50, 150] in world, visual: [-50,0) -> [974,1024), [0,150] -> [0,150]. Drawing at square.x=50 (spans -50..150, clipped to 0..150) and square.x-1024=-974 (off canvas) and square.x+1024=1074 (spans 974..1174, clipped to 974..1024). So the 1074 copy shows [974,1024]. Correct! Good.
+
+Great, the 3x3 loop works for both. Let me keep positions wrapped to [0,1024) and use 3x3 draw.
+
+Now, let me also double check: the square's hole clearing with destination-out in the 3x3 copies. Each copy clears its own hole. For the copy at square.x+1024, the hole is at that offset, cleared. Fine. No interference.
+
+Alright. Let me also add some visual flair: draw the field border, maybe a grid. Optional. Let me keep it clean.
+
+Let me also add a title/label and the checkbox styled.
+
+Now, let me reconsider the physics substep and the position correction more carefully, because I want to prevent tunneling and energy loss.
+
+Actually, I realize there may be an issue with applying the velocity impulse AFTER integrating positions. Let me reconsider the order. In my substep:
+
+Integrate positions (square, ball).
+Resolve collisions (velocity impulse + position correction).
+The velocity impulse changes velocities, which take effect next substep. The position correction moves the ball out. This is fine.
+
+But consider: the ball moves toward the wall during integration and penetrates by pen. Then velocity impulse reverses its normal velocity. Next substep, the ball moves away. Good. The position correction also moves it out. So the ball bounces. Good.
+
+But there's a subtle issue: the velocity impulse is computed using the relative velocity at the penetrated position. Since the ball penetrated, the contact point is at the wall (cu=halfl, cv=clamp(v)). The relative velocity is computed correctly. The impulse reverses the normal component. Good.
+
+One more: after velocity impulse, the ball's velocity normal component is reversed, but the ball is still penetrating (position not yet corrected in this iteration). The position correction then moves it out. But the position correction is applied in the same resolveWalls call. Good.
+
+Wait, in my resolveWalls, for each wall I do velocity impulse then position correction. So after velocity impulse, I immediately position-correct. Good.
+
+But there's an ordering issue: I recompute u,v at the start of each wall. After position correction for wall A, the ball moves, so for wall B, u,v recomputed. Good.
+
+Let me also make sure the velocity impulse uses the latest ball velocity (after previous wall's impulse). Since I recompute u,v but not the velocities... the velocities are updated in place, so wall B sees updated ball.vx etc. But I compute rvx = ball.vx - svx using current ball.vx. Good. And svx uses square.vx, square.omega which are also updated. Good.
+
+Alright, I think the physics is sound. Let me also add energy monitoring maybe for debugging, but not in final. Let me just implement.
+
+Let me also reconsider: do I need to handle the ball colliding with the outer edges of the square? No, the ball is confined to the hole, reflects off inner edges only. The square's outer edges don't matter (the ball is inside). Good.
+
+Now, let me also think about whether the ball could ever be outside the hole (escaped). With proper collision, no. But if it does (numerical), it'd fly off. Let me add a safety: if the ball is way outside the hole (penetration > some large threshold), reset it to center. Actually, let me not add hacks; trust the substeps.
+
+Hmm, but let me reconsider the number of substeps and the ball speed. Ball initial speed ~ 170 px/s. With 4 substeps per frame at 60fps, dt per substep = 1/240 s. Ball moves 170/240 = 0.7 px per substep. Ball radius 5. So no tunneling. Good. Even if the ball speeds up (it won't, energy conserved, speed ~ constant), fine.
+
+Actually, the ball's speed can change as energy transfers to the square. The ball might slow down and the square speed up. The square is 200px, moves slower (mass 1, but the impulse is shared). Max square speed ~ ball speed. Fine.
+
+Let me also consider: when the square rotates, the hole walls move. The ball's collision with a moving wall: the relative velocity accounts for the wall's velocity at the contact point (via square.vx, vy, omega). Good. So the bounce is correct for a moving wall.
+
+Let me now also handle the case where the ball hits the wall while the wall is moving toward it fast. The relative velocity v_n could be large, impulse large. Fine.
+
+Alright, let me write the final code.
+
+Let me also add a small initial nudge and maybe a reset on double-click. Keep it simple.
+
+Let me write the code:
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Ball in Square Hole</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #1a1a1a; font-family: sans-serif; }
+  #wrap { display: flex; gap: 12px; align-items: flex-start; padding: 8px; }
+  canvas { background: #111; border: 1px solid #333; display: block; }
+  #panel { color: #ddd; font-size: 14px; }
+  label { cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game" width="1024" height="1024"></canvas>
+  <div id="panel">
+    <label><input type="checkbox" id="rotToggle"> Allow square rotation</label>
+    <div>Ball bounces elastically inside the square hole. No friction, no energy loss.</div>
+  </div>
+</div>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const FIELD = 1024;
+const L = 200, l = 100, R = 5;
+const m_s = 1, m_b = 1;
+const I = (1/6)*(L*L + l*l)*m_s; // 25000/3
+const halfL = L/2, halfl = l/2, ballLimit = halfl - R;
+
+const square = { x: 512, y: 512, vx: 0, vy: 0, angle: 0, omega: 0 };
+const ball = { x: 512, y: 512, vx: 140, vy: 90 };
+
+let allowRotation = false;
+
+const clamp = (a, lo, hi) => a < lo ? lo : (a > hi ? hi : a);
+const wrap = (v) => { const m = v % FIELD; return m < 0 ? m + FIELD : m; };
+
+function substep(dt) {
+  // integrate
+  square.x += square.vx * dt;
+  square.y += square.vy * dt;
+  square.angle += square.omega * dt;
+  ball.x += ball.vx * dt;
+  ball.y += ball.vy * dt;
+
+  const c = Math.cos(square.angle), s = Math.sin(square.angle);
+  const walls = [{ox:1,oy:0},{ox:-1,oy:0},{ox:0,oy:-1},{ox:0,oy:1}];
+  for (let k = 0; k < 4; k++) {
+    for (const w of walls) {
+      const dx = ball.x - square.x, dy = ball.y - square.y;
+      const u =  c*dx + s*dy;
+      const v = -s*dx + c*dy;
+      let pen, cu, cv;
+      if (w.ox === 1)      { pen = u - ballLimit; cu = halfl; cv = clamp(v, -halfl, halfl); }
+      else if (w.ox === -1) { pen = -ballLimit - u; cu = -halfl; cv = clamp(v, -halfl, halfl); }
+      else if (w.oy === -1) { pen = -ballLimit - v; cu = clamp(u, -halfl, halfl); cv = -halfl; }
+      else                  { pen = v - ballLimit; cu = clamp(u, -halfl, halfl); cv = halfl; }
+      if (pen <= 0) continue;
+
+      const nx = c*w.ox - s*w.oy;
+      const ny = s*w.ox + c*w.oy;
+      const rx = c*cu - s*cv;
+      const ry = s*cu + c*cv;
+      const svx = square.vx - square.omega * ry;
+      const svy = square.vy + square.omega * rx;
+      const rvx = ball.vx - svx;
+      const rvy = ball.vy - svy;
+      const vn = rvx*nx + rvy*ny;
+      if (vn > 0) {
+        const rCrossN = rx*ny - ry*nx;
+        const denom = 1/m_b + 1/m_s + (rCrossN*rCrossN)/I;
+        const j = 2 * vn / denom;
+        ball.vx -= j*nx/m_b;
+        ball.vy -= j*ny/m_b;
+        square.vx += j*nx/m_s;
+        square.vy += j*ny/m_s;
+        if (allowRotation) square.omega += j*rCrossN/I;
+        else square.omega = 0;
+      }
+      ball.x -= nx * pen;
+      ball.y -= ny * pen;
+    }
+  }
+}
+
+function step(dt) {
+  const sub = 4;
+  const h = dt/sub;
+  for (let i = 0; i < sub; i++) substep(h);
+  // wrap positions (cosmetic; keeps numbers small)
+  square.x = wrap(square.x); square.y = wrap(square.y);
+  ball.x = wrap(ball.x); ball.y = wrap(ball.y);
+}
+
+function render() {
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0,0,FIELD,FIELD);
+  // subtle grid
+  ctx.strokeStyle = '#1d1d1d';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= FIELD; i += 64) {
+    ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,FIELD); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(FIELD,i); ctx.stroke();
+  }
+
+  // square (with wrap copies)
+  const sx = square.x, sy = square.y;
+  for (let dx = -FIELD; dx <= FIELD; dx += FIELD) {
+    for (let dy = -FIELD; dy <= FIELD; dy += FIELD) {
+      ctx.save();
+      ctx.translate(sx+dx, sy+dy);
+      ctx.rotate(square.angle);
+      ctx.fillStyle = '#3a6ea5';
+      ctx.fillRect(-halfL, -halfL, L, L);
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.fillStyle = '#000';
+      ctx.fillRect(-halfl, -halfl, l, l);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = '#cde';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(-halfl, -halfl, l, l);
+      ctx.restore();
+    }
+  }
+
+  // ball (with wrap copies)
+  ctx.fillStyle = '#ffce3a';
+  const bx = ball.x, by = ball.y;
+  for (let dx = -FIELD; dx <= FIELD; dx += FIELD) {
+    for (let dy = -FIELD; dy <= FIELD; dy += FIELD) {
+      ctx.beginPath();
+      ctx.arc(bx+dx, by+dy, R, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+}
+
+document.getElementById('rotToggle').addEventListener('change', (e) => {
+  allowRotation = e.target.checked;
+  if (!allowRotation) square.omega = 0;
+});
+
+let last = performance.now();
+function frame(now) {
+  let dt = (now - last)/1000;
+  last = now;
+  if (dt > 0.05) dt = 0.05;
+  step(dt);
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
+Wait, there's a subtle bug in the position correction: I do ball.x -= nx * pen (full correction). But if the ball is penetrating two walls (corner), after correcting wall A, wall B's pen is recomputed (since I recompute u,v). But the full correction of wall A might over-correct if... no, it just puts the ball at the wall surface. Then wall B corrects its penetration. Fine.
+
+But there's a concern: full position correction (pen) without a factor can cause the ball to be pushed exactly to the surface, but then the velocity impulse (if vn>0) reverses velocity. Next substep, ball moves away. Good.
+
+However, there's a classic issue: if the ball is pushed to the surface by position correction, and then in the next iteration of the same substep, another wall is processed... it's fine.
+
+Actually wait, there's a potential problem: full position correction could move the ball out of one wall but into... no, it moves inward (opposite to outward normal), so it moves into the hole. Good.
+
+Let me reconsider the position correction sign. n is the outward normal (pointing from hole into frame). The ball is penetrating the wall, i.e., it's too far outward. To move it back into the hole, move it in -n direction. ball.x -= nx * pen. Yes, correct.
+
+Now, let me reconsider whether full correction is too aggressive and causes jitter. With small dt, pen is small (ball moves ~0.7px per substep, so pen < 1px typically). Full correction of <1px is negligible visually. Good.
+
+Hmm, but actually pen could be larger if the ball hits a corner and the square rotates, etc. Still small with substeps. Fine.
+
+Let me reconsider the number of iterations. I do 4 outer iterations (k loop) × 4 walls = 16 collision checks per substep. 4 substeps per frame = 64 checks per frame. Cheap.
+
+Actually, wait, I have the k loop (4 iterations) outside the walls loop, and inside each iteration I loop walls. Let me re-read my code... yes, for (let k=0;k<4;k++){ for (const w of walls){...} }. Good.
+
+Now, let me reconsider: is there an issue with the ball's velocity being affected by position correction? Position correction only changes position, not velocity. So energy is not directly changed by position correction. But it could indirectly: if the ball is corrected to the surface while moving toward the wall, the velocity impulse reverses it. Energy conserved by the impulse. Good.
+
+Let me also double-check the moment of inertia value: I = (1/6)(200^2 + 100^2) = (1/6)(40000+10000) = 50000/6 = 8333.33. Good.
+
+Now, let me think about a potential issue: when allowRotation is on and the square rotates, the angle changes each substep. The collision resolution uses the current angle. Good.
+
+Let me also think about the initial condition: square at (512,512), ball at (512,512) with vx=140, vy=90. The ball moves toward the bottom-right wall. Hits it, bounces, pushes square. Good.
+
+Wait, the ball starts at the exact center. With vx=140, vy=90, it moves toward the bottom-right corner region. It'll hit either the right wall (u=45) or top wall (v=45) depending on the angle. The direction (140,90) has angle ~32.7°, so it hits the right wall first (u reaches 45 when v = 45*tan(32.7) = 29 < 45). So hits right wall. Good.
+
+Now, let me also consider: the square has mass 1, ball mass 1. When the ball hits the right wall, the impulse pushes the square to the right (same direction as the ball's motion). So the square moves right, and the ball bounces back left. The square gains rightward velocity, ball loses rightward velocity (reverses). Total momentum conserved. Good.
+
+Let me also verify: after the ball bounces off the right wall, the ball moves left and up (reversed x, same y). It'll hit the left wall or top/bottom. The square moves right. The hole moves right with the square. The ball, moving left relative to world, but the hole moving right, so relative to the hole the ball moves left faster. It'll hit the left wall. Bounces again, pushes square right more. Etc. The square keeps getting pushed right. The ball oscillates. Interesting.
+
+With rotation on, the ball hitting walls at different heights creates torque, making the square rotate. The rotating hole flings the ball. Chaotic. Good.
+
+Let me now also think about whether the ball could gain energy (numerical instability). The impulse formula is energy-conserving for the normal component. Position correction doesn't add velocity. So energy should be conserved (within numerical error). Good.
+
+One concern: the position correction moves the ball without adjusting the square. If the ball is pushed out by pen, but the square is also moving, the relative position is fixed. But the square's position isn't corrected, so the square might drift such that... no, the square's position is governed by its velocity, which is correct. The ball's position relative to the square is corrected. Fine.
+
+Hmm, actually, let me reconsider a subtle issue: the position correction moves the ball in world by -npen. But the penetration pen was measured in the square's local frame. Moving the ball in world by -npen reduces the local penetration by pen (as I verified). Good. But this assumes the square doesn't move during the correction (it doesn't; we only move the ball). Good.
+
+Alright, I'm fairly confident. Let me also add a small feature: show the checkbox state and maybe energy. Actually, let me keep it minimal per instructions.
+
+Let me reconsider the "1 tab indent" requirement: "html js 1 tab indent". So use 1 tab for indentation. Let me use tabs in the HTML file. Actually, the instruction says "1 tab indent" - probably means indent with 1 tab. Let me use tabs.
+
+Wait, but I'm writing the file with the Write tool. Let me use tabs for indentation in the HTML/JS. Actually, "1 tab indent" might just mean the code should be indented with tabs (one level per nesting). Let me use tabs.
+
+Hmm, but the Write tool content is a string; I'll use actual tab characters. Let me write with tabs.
+
+Actually, let me reconsider: the user says "html js 1 tab indent". This likely means: HTML and JS, indented with 1 tab (i.e., use tabs for indentation). I'll use tabs.
+
+Let me also reconsider whether to put JS in a separate file or inline. The user said "html js", so probably a single HTML file with inline JS. Let me do that.
+
+Let me also double check the canvas size and field. Canvas 1024x1024. Good.
+
+Let me reconsider the grid drawing: drawing grid lines every 64px. That's 16 lines each direction, 32 stroke calls per frame. Fine but maybe unnecessary. Let me keep a subtle grid or remove. Let me keep it subtle (very dark). Actually, let me remove the grid to keep it clean, or keep it. I'll keep a faint grid.
+
+Hmm, actually the grid lines might interfere with visual of the square near edges. Let me keep it but very subtle. Or remove. Let me remove to keep focus on the simulation. Actually a faint grid helps see the wrap. Let me keep it faint.
+
+Let me finalize. Let me also add a small instruction text.
+
+Let me also reconsider: should the ball have an initial velocity, or start at rest? If at rest, nothing happens (no forces). The user wants to see the ball bounce. So give it initial velocity. Good.
+
+Actually, wait — let me reconsider whether the square should have some initial velocity or the ball. Let me give the ball an initial velocity. That's enough to start motion.
+
+Let me also reconsider: the user says "initial ball position centered into hole. ensure it properly bounce in concave hole". So ball starts centered. Good.
+
+Let me write the final file now. Let me also add a small energy display in the panel for my own verification? The user didn't ask. Let me not add it to keep clean. But maybe I'll add a readout of ball speed for interest. Actually, keep minimal.
+
+Let me reconsider one more time the collision for the corner to make sure the ball doesn't escape. Consider the ball heading straight into a corner (e.g., bottom-right, direction (1,1)). It penetrates both right wall (u>45) and bottom wall (v>45).
+
+Iteration 1, wall right: pen = u-45 > 0. Contact at (50, clamp(v,-50,50)). If v < 50, contact (50, v). Compute impulse along right wall normal. But the ball is also penetrating bottom wall. The right-wall impulse pushes the ball in -n_right direction (inward, -x in local). This reduces u. But the ball's velocity has both x and y components. The impulse only affects the x (normal) component of velocity. The y component unchanged. So after right-wall resolution, ball still moving down (v velocity), and u corrected. Then wall bottom: recompute, v still > 45, resolve, push in -y. Now both corrected.
+
+But the impulses: right wall impulse changes square's velocity and omega. Bottom wall impulse also. The ball's velocity: x reversed (right wall), y reversed (bottom wall). So ball bounces back toward center. Good. The corner is handled.
+
+But wait, there's a subtlety: after the right wall impulse, the ball's x-velocity is reversed, but the ball is still at the right wall (position corrected to u=45). Then bottom wall resolution: the ball is at u=45, v>45. The bottom wall contact is at (clamp(u,-50,50), -50) = (45, -50) — wait, bottom wall is v=-50, contact at (clamp(u,-50,50), -50). But the ball is at the bottom-right, v>45 means it's near the top? Wait, I need to recheck my wall definitions.
+
+Let me recheck:
+
+Right wall: u = +50 (local x = +50). Ball inside has u in [-45,45]. Penetrating right means u > 45. outL = (1,0). ✓.
+Left wall: u = -50. Penetrating means u < -45, pen = -45 - u. outL = (-1,0). ✓.
+Bottom wall: v = -50. Penetrating means v < -45, pen = -45 - v. outL = (0,-1). ✓.
+Top wall: v = +50. Penetrating means v > 45, pen = v - 45. outL = (0,1). ✓.
+So "bottom" is v=-50 (local y negative). If the ball moves in +v direction (downward in local? depends on coordinate convention). Anyway, the math is consistent.
+
+For a ball heading to the bottom-right corner (u>45 and v<-45):
+
+Right wall: pen = u-45, contact (50, clamp(v,-50,50)). v is around -46, clamp to -50? No, clamp(v,-50,50) with v=-46 gives -46. So contact (50, -46).
+Bottom wall: pen = -45-v = -45-(-46) = 1. contact (clamp(u,-50,50), -50). u around 46, clamp 46. contact (46, -50).
+Both resolved. Good.
+
+Hmm wait, but if v = -46, that's beyond the bottom wall limit (-45)? The ball center v=-46 means it's penetrating the bottom wall (v < -45). And u=46 penetrating right. So it's in the corner. Both walls resolve. Good.
+
+But the contact point for the right wall is (50, -46). But the bottom wall is at v=-50, and the ball center is at v=-46, which is inside (v > -50). So the ball is inside the bottom wall but penetrating the right wall. Wait, v=-46 is between -45 and -50? No: -46 < -45, so it's beyond the ballLimit (-45) toward the bottom wall (-50). So it IS penetrating the bottom wall (ball center past the -45 limit). And the contact for the bottom wall is at v=-50, u=clamp(46)=46. But u=46 is past the right wall limit (45), so the contact point (46, -50) is actually outside the hole (in the frame corner). Hmm. That's the corner region. The contact point (46,-50) is on the bottom edge but at u=46 which is beyond the right edge. Physically, the ball in the corner touches the corner point (50,-50), not (46,-50).
+
+This is the corner case. Using contact (46,-50) for the bottom wall is slightly off (it's on the bottom edge extended). The lever arm and normal would be for the bottom wall. The impulse would push the ball in +v (up). But the ball also needs to be pushed in -u (left). The right wall handles -u. So together they push the ball out of the corner. The contact point being slightly off (46 vs 50) means the torque is slightly off, but it's a small error that resolves over iterations. Acceptable.
+
+Actually, to handle corners better, I could clamp the contact point to the wall segment: for the bottom wall, contact u should be in [-50, 50]. clamp(u,-50,50) with u=46 gives 46, which is within [-50,50]. So it's on the bottom edge segment. But the ball is at u=46, which is past the right wall. The actual contact for a ball in the corner is the corner (50,-50). Using (46,-50) is the point on the bottom wall directly below the ball center. That's a reasonable contact point (the closest point on the bottom wall to the ball center). Actually, the closest point on the bottom wall segment to the ball center (46,-46) is (46,-50) (since u=46 is within [-50,50]). So it's the correct closest point! Good. And for the right wall, closest point to (46,-46) on the right wall segment is (50,-46) (v=-46 within [-50,50]). So both closest-point contacts. This is the standard GJK/EPA approach for circle vs polygon. Good, it's correct.
+
+So my contact points are the closest points on each wall segment to the ball center. That's correct for convex polygon collision.
+
+Now, the impulse for each wall is applied along that wall's normal. For the corner, two impulses. This is the standard sequential impulse approach. It works.
+
+Great, I'm confident.
+
+Let me also reconsider: the position correction moves the ball by -npen. For the corner, after right wall correction (ball.x -= nxpen_right), the ball's u becomes 45. Then bottom wall: recompute, v still <-45, correct. Good.
+
+But wait, there's a subtlety: after the right wall position correction, the ball moved in world by -n_right*pen_right. This changes both u and v in local (if rotated). So the bottom wall's pen (recomputed) might be different. Fine, it recomputes.
+
+Alright. Let me also make sure that when allowRotation is false, I set square.omega = 0 after each impulse. But also, the square.angle should stay constant. Since omega=0, angle doesn't change. Good. But I should also ensure that when allowRotation is false, even if omega somehow nonzero, it's zeroed. I do square.omega = 0 in the else branch. But that only runs when vn>0 (collision). If no collision, omega stays whatever. Initially 0. When toggled off, I set omega=0. So it stays 0. Good. But to be safe, let me zero omega at the start of each substep if !allowRotation. Actually, let me just zero it after the collision loop if !allowRotation. Let me add that.
+
+Actually, simpler: in the integrate step, if !allowRotation, don't change angle (omega is 0). And after impulses, if !allowRotation, zero omega. Let me add if (!allowRotation) square.omega = 0; at the end of substep. That guarantees no rotation.
+
+Wait, but if I zero omega at the end of substep, and the angle didn't change (since omega was 0 during integrate), angle stays constant. Good.
+
+Hmm, but actually during the substep, omega might be set by an impulse (in the collision loop, if allowRotation false, I set omega=0 in the else branch). So omega stays 0 throughout. The integrate square.angle += square.omega * dt adds 0. Good. So angle constant. And I'll add the safety zero at the end.
+
+Let me finalize the code with tabs.
+
+Actually, let me reconsider the square.angle += square.omega * dt when allowRotation is false: omega is 0, so angle unchanged. Good. But to be extra safe, let me guard: if (allowRotation) square.angle += square.omega * dt; Actually if omega is always 0 when false, it doesn't matter. But let me add the guard for clarity and safety.
+
+Let me also reconsider: the user says "off: locked rotation, free translation". So when off, the square translates freely but doesn't rotate. My implementation: omega=0, angle fixed. Translation free (vx,vy change via impulses). Good.
+
+"on: free rotation+translation, moment of inertia computed analytically". Good.
+
+Let me write the final file.
+
+Let me also add a small reset on 'r' key? Not needed. Keep minimal.
+
+Let me also reconsider the visual: the square is blue, ball yellow. Good contrast on dark bg.
+
+Let me also make sure the canvas is not too large to cause layout issues. 1024x1024 is fine.
+
+Let me write it.
+
+Actually, one more consideration: the user mentioned "typical bugs: square problem with wrap-xy". So they're warning about wrap bugs. My 3x3 draw approach handles wrap. And I wrap positions each frame. Let me make sure the wrap is correct.
+
+Also, "prevent tunneling/clip in concave geometry" - my substeps handle tunneling. "clip" - the ball shouldn't clip through walls. Substeps + position correction handle it.
+
+"keep impulse. no round, no loss." - elastic, no rounding. My impulse uses exact math. Good.
+
+"no friction" - no tangential impulse. Good.
+
+Let me write the final code now.
+
+Let me reconsider the indentation: I'll use tabs (1 tab per level). Let me write the HTML with tabs.
+
+Actually, for HTML, the convention is often 2 spaces, but the user said "1 tab indent". Let me use tabs throughout. I'll write the file with tab characters.
+
+Let me write it.
+
+One more: let me add a small energy/momentum readout? The user didn't ask. I'll add a minimal info line showing checkbox only. Actually, let me add ball speed readout for interest but keep it tiny. Hmm, instructions say minimize. Let me keep the panel minimal: checkbox + a short description.
+
+Let me finalize.
+
+Actually, let me reconsider the initial ball velocity direction to make it interesting and avoid symmetric periodic motion. vx=140, vy=90 is fine (asymmetric).
+
+Let me also reconsider: should I start the ball with zero velocity and let the user click to... no, give it velocity.
+
+Let me write the file.
+
+Let me also double-check: the wrap function for positions. square.x = wrap(square.x). After physics, square.x might be, say, 1030. wrap -> 6. ball.x might be 1035 -> 11. Good. Next frame, physics uses these. The square moves from 6. Good. The relative position preserved. Good.
+
+But wait: there's a subtle issue. If the square has velocity vx=100, and it's at x=1020, after substep it's at x=1030 (not yet wrapped during substep). The ball is at x=1035. During the substep, collisions computed with square at 1030, ball at 1035. Fine. After substep, wrap: square=6, ball=11. Next substep: square moves to 6+100*dt. Good. The physics is consistent because it's translation-invariant. Good.
+
+But the angle and velocities are not affected by wrapping. Good.
+
+Alright, writing the file now.
+
+Let me also make sure I handle the case where the ball, after wrapping, might be far from the square if they wrapped by different multiples. But since the ball is always within the hole (within 45px of square center), and I wrap both to [0,1024), the ball is within 45px of the square (mod 1024). Actually, if square at 1020 (wrapped to 1020, no wait 1020 < 1024 so stays 1020), ball at 1065 (wrapped to 1065-1024=41). Then ball at 41, square at 1020. Distance = 41-1020 = -979, mod 1024 = 45. So the ball is 45px from the square (wrapped). Good, consistent. The collision detection uses ball - square = 41-1020 = -979. In local coords, u = c*(-979) + s*(...). That's a large value, but the ball should be within 45 of the square...
+
+Wait, this is a problem! If square.x = 1020 and ball.x = 41 (wrapped), then ball.x - square.x = -979. But the ball should be within 45px of the square center. The issue: I wrapped square and ball independently. If square.x = 1020 (not wrapped, since < 1024) and ball.x = 1065 (wrapped to 41), then the ball's unwrapped position was 1065, square's was 1020, difference 45. After wrapping ball to 41, the difference is -979. But mod 1024, -979 ≡ 45. So the ball IS 45px from the square in the wrapped sense. But my collision code uses the raw difference -979, giving u = -979 (for angle 0), which is way outside [-45,45]. So the collision would think the ball is far outside and try to correct it, moving it by pen = -45 - (-979) = 934px! That's a disaster.
+
+So wrapping positions independently breaks the collision detection! I need to ensure the ball and square are wrapped by the SAME multiple of 1024.
+
+The fix: wrap the square, and wrap the ball relative to the square. I.e., after wrapping the square to [0,1024), wrap the ball to be within [square - 512, square + 512) or just ensure ball is within half-field of square. Actually, the ball is within 45px of the square (in the unwrapped sense). So after wrapping the square to [0,1024), the ball should be wrapped to be within [square.x - 45, square.x + 45] (mod 1024).
+
+Simplest fix: don't wrap the ball independently. Instead, keep the ball's position relative to the square. Or, after wrapping the square, adjust the ball by the same delta.
+
+Let me do: compute the wrap delta for the square, apply the same delta to the ball.
+
+function wrapPositions() {
+  const nsx = wrap(square.x);
+  const dx = nsx - square.x;
+  square.x = nsx;
+  ball.x += dx;
+  // same for y
+  const nsy = wrap(square.y);
+  const dy = nsy - square.y;
+  square.y = nsy;
+  ball.y += dy;
+}
+Wait, but dx = nsx - square.x is a multiple of 1024 (negative, since square.x was > 1024, nsx < square.x, so dx = -1024 or -2048 etc.). Applying the same dx to ball.x keeps the ball's relative position. Good. But then ball.x might be outside [0,1024). That's fine for physics (unwrapped), and rendering wraps it. Actually, let me also wrap the ball for rendering, but for physics keep ball.x consistent with square.x.
+
+Hmm, but if I keep ball.x possibly outside [0,1024) (e.g., ball.x = 1065 while square.x = 1020... wait no). Let me re-trace: square.x = 1030 (before wrap). nsx = wrap(1030) = 6. dx = 6 - 1030 = -1024. square.x = 6. ball.x was 1035, now ball.x = 1035 - 1024 = 11. So ball.x = 11, square.x = 6. Difference 5. Good. Both in [0,1024).
+
+Another case: square.x = 1020 (before wrap, < 1024 so no wrap). nsx = 1020. dx = 0. ball.x = 1065 (if ball is 45 ahead). ball.x stays 1065. square.x = 1020. Difference 45. Good. But ball.x = 1065 is outside [0,1024). For physics, that's fine (difference is correct). For rendering, wrap ball.x to 41. Good.
+
+So the fix is: apply the square's wrap delta to the ball. This keeps the relative position correct. Let me use this approach.
+
+Actually, even simpler and fully robust: don't wrap positions at all during physics. Keep them as large numbers. Only wrap for rendering. But large numbers could cause float precision issues over long time. The square moves at ~100px/s, so after 1000s it's at 100000px. Float precision at 100000 is ~0.01px, fine. After hours, could degrade. But for a demo, fine. However, to be safe, let me wrap periodically with the delta approach.
+
+Let me use the delta approach: wrap the square, apply delta to ball. This keeps numbers small and relative position correct.
+
+Let me also wrap the ball for rendering only (in the render function, use wrap(ball.x)). Actually, in render I draw the ball at bx = wrap(ball.x) with 3x3 copies. And the square at square.x (already wrapped) with 3x3 copies. Good.
+
+Wait, but if ball.x = 1065 (unwrapped) and square.x = 1020 (wrapped), then in render: square drawn at 1020 with copies at -4, 1020, 2044. The copy at 2044 is off canvas. The copy at -4: square spans -104..96, clipped to 0..96. Hmm, that shows part of the square at the left edge. And the ball drawn at wrap(1065)=41 with copies at -983, 41, 1065. The copy at 1065 is off canvas (spans 1060..1070, clipped to none since canvas ends at 1024). The copy at 41 shows the ball. But the ball should appear near the square. The square's wrapped position: the square at world 1020, its right part (1020..1120) wraps to 0..96. The ball at world 1065 wraps to 41. So the ball at 41 is within the wrapped square part (0..96). Good. And the square copy at -4 (i.e., world 1020-1024 = -4) shows the left part... wait, I'm confusing myself.
+
+Let me re-trace carefully. World coords: square center at 1020, ball at 1065. The square spans world 920..1120. The part 1024..1120 wraps to 0..96. The part 920..1024 stays at 920..1024. So visually: square appears at 920..1024 (right portion of canvas) and 0..96 (left portion). The ball at 1065 wraps to 41, appears at 41 (within 0..96). Good.
+
+Now my render: square.x = 1020 (wrapped, since 1020 < 1024). Draw square at 1020 + {-1024, 0, 1024} = {-4, 1020, 2044}.
+
+At -4: square spans -104..96, clipped to 0..96. Shows the wrapped part (0..96). ✓.
+At 1020: square spans 920..1120, clipped to 920..1024. Shows the main part. ✓.
+At 2044: off canvas. ✓. Ball: ball.x = 1065 (unwrapped). Draw at wrap(1065)=41 + {-1024,0,1024} = {-983, 41, 1065}.
+At 41: ball spans 36..46. Shows the ball. ✓ (within the wrapped square part 0..96).
+At -983, 1065: off canvas. ✓. Good, correct.
+So the render works if I wrap the ball position for the base draw. Let me use const bx = wrap(ball.x) in render. And the square is already wrapped (square.x in [0,1024)). Good.
+
+But wait, in the delta approach, after wrapping the square, ball.x might be outside [0,1024) (like 1065). That's fine; render wraps it. And physics uses ball.x = 1065, square.x = 1020, difference 45. Correct.
+
+Hmm, but actually, let me reconsider: after the delta wrap, square.x is in [0,1024) and ball.x is square.x + (original relative offset). The original relative offset is within [-45,45] (ball in hole). So ball.x is within [square.x-45, square.x+45], which is within [-45, 1069]. So ball.x could be slightly negative or up to 1069. Render wraps it. Physics uses the raw value, difference to square.x is within [-45,45]. Correct. Good.
+
+Let me implement the delta wrap:
+
+function wrapPositions() {
+  let nsx = wrap(square.x);
+  ball.x += nsx - square.x;
+  square.x = nsx;
+  let nsy = wrap(square.y);
+  ball.y += nsy - square.y;
+  square.y = nsy;
+}
+This keeps ball.x consistent with square.x. Good.
+
+Actually, I realize I should also make sure the ball doesn't drift out of the hole over many frames due to accumulated numerical error in the delta wrap. The delta is exact (multiple of 1024), so no error. Good.
+
+Let me finalize.
+
+Let me also reconsider: do I even need to wrap positions? If I never wrap, the square and ball positions grow. The collision detection uses differences, which stay small (ball within 45 of square). So the differences are small even if absolute positions are large. Float precision: at position 10^6, precision ~0.1px. At 10^7, ~1px. The ball is 10px, so precision 1px could cause issues. Over a long simulation (hours at 100px/s = 3.6M px), precision ~0.2px. Borderline. Let me wrap periodically to keep positions small. The delta wrap keeps them in [0,1024) for the square and near for the ball. Good.
+
+Actually, the delta wrap keeps square in [0,1024) and ball within [square-45, square+45] ⊂ [-45, 1069]. So ball within ~1100. Precision fine. Good.
+
+Let me write the final code.
+
+Let me also add a small optimization: precompute walls array outside the loop. And the clamp. Fine.
+
+Let me write it now with tabs.
+
+Actually, let me reconsider the substep count and iterations for performance and stability. 4 substeps × 4 iterations × 4 walls = 64 collision resolutions per frame. Each is cheap. At 60fps, fine.
+
+Let me also cap dt to avoid huge steps when tabbing. I have if (dt > 0.05) dt = 0.05;. Good.
+
+Let me write the file.
+
+Let me reconsider: the user wants "1 tab indent". I'll use tab characters. Let me make sure the Write tool content uses tabs. I'll type them as actual tabs.
+
+Let me write the final HTML.
+
+Actually, I want to also double-check the moment of inertia is used correctly and the checkbox works. Let me also add a label showing the moment of inertia value? Not needed.
+
+Let me write it.
+
+Final code:
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Ball in Square Hole</title>
+<style>
+	html, body { margin: 0; height: 100%; background: #1a1a1a; font-family: system-ui, sans-serif; color: #ddd; }
+	#wrap { display: flex; gap: 12px; align-items: flex-start; padding: 8px; }
+	canvas { background: #111; border: 1px solid #333; display: block; }
+	#panel { font-size: 14px; line-height: 1.6; }
+	label { cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="wrap">
+	<canvas id="game" width="1024" height="1024"></canvas>
+	<div id="panel">
+		<label><input type="checkbox" id="rotToggle"> Allow square rotation</label>
+		<div>Ball bounces elastically inside the square hole.<br>No friction, no energy loss.</div>
+	</div>
+</div>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const FIELD = 1024;
+const L = 200, l = 100, R = 5;
+const m_s = 1, m_b = 1;
+const I = (1 / 6) * (L * L + l * l) * m_s; // moment of inertia of square frame
+const halfL = L / 2, halfl = l / 2, ballLimit = halfl - R;
+
+const square = { x: 512, y: 512, vx: 0, vy: 0, angle: 0, omega: 0 };
+const ball = { x: 512, y: 512, vx: 140, vy: 90 };
+
+let allowRotation = false;
+
+const clamp = (a, lo, hi) => a < lo ? lo : (a > hi ? hi : a);
+const wrap = (v) => { const m = v % FIELD; return m < 0 ? m + FIELD : m; };
+
+function substep(dt) {
+	if (!allowRotation) square.omega = 0;
+	square.x += square.vx * dt;
+	square.y += square.vy * dt;
+	if (allowRotation) square.angle += square.omega * dt;
+	ball.x += ball.vx * dt;
+	ball.y += ball.vy * dt;
+
+	const c = Math.cos(square.angle), s = Math.sin(square.angle);
+	const walls = [{ ox: 1, oy: 0 }, { ox: -1, oy: 0 }, { ox: 0, oy: -1 }, { ox: 0, oy: 1 }];
+	for (let k = 0; k < 4; k++) {
+		for (const w of walls) {
+			const dx = ball.x - square.x, dy = ball.y - square.y;
+			const u = c * dx + s * dy;
+			const v = -s * dx + c * dy;
+			let pen, cu, cv;
+			if (w.ox === 1) { pen = u - ballLimit; cu = halfl; cv = clamp(v, -halfl, halfl); }
+			else if (w.ox === -1) { pen = -ballLimit - u; cu = -halfl; cv = clamp(v, -halfl, halfl); }
+			else if (w.oy === -1) { pen = -ballLimit - v; cu = clamp(u, -halfl, halfl); cv = -halfl; }
+			else { pen = v - ballLimit; cu = clamp(u, -halfl, halfl); cv = halfl; }
+			if (pen <= 0) continue;
+
+			const nx = c * w.ox - s * w.oy;
+			const ny = s * w.ox + c * w.oy;
+			const rx = c * cu - s * cv;
+			const ry = s * cu + c * cv;
+			const svx = square.vx - square.omega * ry;
+			const svy = square.vy + square.omega * rx;
+			const rvx = ball.vx - svx;
+			const rvy = ball.vy - svy;
+			const vn = rvx * nx + rvy * ny;
+			if (vn > 0) {
+				const rCrossN = rx * ny - ry * nx;
+				const denom = 1 / m_b + 1 / m_s + (rCrossN * rCrossN) / I;
+				const j = 2 * vn / denom;
+				ball.vx -= j * nx / m_b;
+				ball.vy -= j * ny / m_b;
+				square.vx += j * nx / m_s;
+				square.vy += j * ny / m_s;
+				if (allowRotation) square.omega += j * rCrossN / I;
+				else square.omega = 0;
+			}
+			ball.x -= nx * pen;
+			ball.y -= ny * pen;
+		}
+	}
+}
+
+function step(dt) {
+	const sub = 4, h = dt / sub;
+	for (let i = 0; i < sub; i++) substep(h);
+	const nsx = wrap(square.x); ball.x += nsx - square.x; square.x = nsx;
+	const nsy = wrap(square.y); ball.y += nsy - square.y; square.y = nsy;
+}
+
+function render() {
+	ctx.fillStyle = '#111';
+	ctx.fillRect(0, 0, FIELD, FIELD);
+	ctx.strokeStyle = '#191919';
+	ctx.lineWidth = 1;
+	for (let i = 0; i <= FIELD; i += 64) {
+		ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, FIELD); ctx.stroke();
+		ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(FIELD, i); ctx.stroke();
+	}
+
+	const sx = square.x, sy = square.y;
+	for (let dx = -FIELD; dx <= FIELD; dx += FIELD) {
+		for (let dy = -FIELD; dy <= FIELD; dy += FIELD) {
+			ctx.save();
+			ctx.translate(sx + dx, sy + dy);
+			ctx.rotate(square.angle);
+			ctx.fillStyle = '#3a6ea5';
+			ctx.fillRect(-halfL, -halfL, L, L);
+			ctx.globalCompositeOperation = 'destination-out';
+			ctx.fillStyle = '#000';
+			ctx.fillRect(-halfl, -halfl, l, l);
+			ctx.globalCompositeOperation = 'source-over';
+			ctx.strokeStyle = '#cde';
+			ctx.lineWidth = 2;
+			ctx.strokeRect(-halfl, -halfl, l, l);
+			ctx.restore();
+		}
+	}
+
+	ctx.fillStyle = '#ffce3a';
+	const bx = wrap(ball.x), by = wrap(ball.y);
+	for (let dx = -FIELD; dx <= FIELD; dx += FIELD) {
+		for (let dy = -FIELD; dy <= FIELD; dy += FIELD) {
+			ctx.beginPath();
+			ctx.arc(bx + dx, by + dy, R, 0, Math.PI * 2);
+			ctx.fill();
+		}
+	}
+}
+
+document.getElementById('rotToggle').addEventListener('change', (e) => {
+	allowRotation = e.target.checked;
+	if (!allowRotation) square.omega = 0;
+});
+
+let last = performance.now();
+function frame(now) {
+	let dt = (now - last) / 1000;
+	last = now;
+	if (dt > 0.05) dt = 0.05;
+	step(dt);
+	render();
+	requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
+Wait, there's an issue with the position correction and the velocity impulse interaction when the square is rotating. Let me reconsider: after I apply the velocity impulse (which changes square.omega), the next wall in the same iteration uses the updated square.omega. But I recompute u,v (position) but the velocity impulse used the contact point based on old position. That's fine.
+
+But there's a subtle issue: the position correction ball.x -= nx * pen moves the ball. But the velocity impulse was computed based on the ball's velocity before position correction. Position correction doesn't change velocity. So the impulse is still valid. Good.
+
+Now, another concern: the position correction moves the ball out, but if the ball is in a corner and I correct wall A (move ball in -n_A), then wall B's pen is recomputed. But the ball's velocity wasn't changed by position correction, so wall B's velocity impulse uses the original velocity. Fine.
+
+Let me also reconsider: after position correction for wall A, the ball is at the surface of wall A. Then wall B: if the ball is also penetrating wall B, resolve. But the ball is now at wall A's surface, and wall B's contact is computed from the new position. Good.
+
+I think it's correct.
+
+Let me also reconsider the case where the ball is moving away from a wall but penetrating (vn <= 0). No velocity impulse, just position correction. The ball moves out. Good. But could this cause the ball to get "stuck" if it's moving away slowly and position correction pushes it out, but then next substep it moves back in? With vn <= 0 (moving away), it won't move back in. Good.
+
+Hmm, wait, actually there's a subtle issue: if the ball is penetrating and vn <= 0 (moving away), position correction moves it out. But what if the ball is penetrating because the square moved into it (the wall pushed the ball)? Then the ball's velocity relative to the wall might be such that it's being pushed. Let me think... If the square moves toward the ball (wall pushes ball), the relative velocity v_n = v_ball - v_wall. If the wall is moving toward the ball (v_wall has +n component, i.e., wall moving outward toward ball), then v_n could be negative (ball moving slower outward than wall). Hmm, this is the case where the wall shoves the ball. In that case, v_n < 0 (relative velocity is into the wall? no). Let me define: n is outward (from hole into frame). The ball is inside. If the wall moves outward (+n) toward the ball, and the ball is stationary, v_rel = 0 - v_wall = -v_wall (negative along n). So v_n < 0. My code: if vn > 0, apply impulse. Here vn < 0, so no impulse, just position correction. But physically, the wall pushing the ball should accelerate the ball outward (+n).
+
+Hmm, this is the "moving wall pushing a stationary ball" case. With vn < 0 (the wall is approaching the ball from... wait). Let me reconsider. n points outward (into frame). The ball is inside the hole. The wall is at u=50 (right wall). The ball is at u < 45 (inside). If the square accelerates to the right (wall moving right, +n direction), the wall approaches the ball. The relative velocity v_n = v_ball - v_wall. If ball stationary (v_ball=0) and wall moving right (v_wall = +something in n direction), then v_n = 0 - v_wall_n = -v_wall_n < 0. So v_n < 0.
+
+In my code, v_n < 0 means no impulse. But the wall is pushing the ball! The ball should gain +n velocity. This is a missed collision!
+
+Wait, but this situation arises when the ball is NOT penetrating (ball at u < 45, wall approaching). In that case, pen <= 0, so I skip entirely. So no collision detected until the ball penetrates (u > 45). Once penetrating, pen > 0. At that point, v_n could be < 0 (wall moving faster than ball). My code: pen > 0, but v_n < 0, so no velocity impulse, only position correction. The position correction moves the ball out (in -n direction, into the hole). But the wall is moving outward (+n), so moving the ball in -n might not be enough—the wall keeps pushing.
+
+Hmm, this is a problem. Let me reconsider. When the wall pushes the ball (v_n < 0, wall approaching ball from inside... no). Let me re-think the sign convention.
+
+Actually, I think I have the sign convention confused. Let me redo it carefully.
+
+n = outward normal of the wall = pointing from the hole interior toward the frame (i.e., away from the hole center). For the right wall (u=+50), n points in +u direction (toward the frame, away from center).
+
+The ball is inside the hole (u < 50). For the ball to be confined, when it's at the wall (u=45, ball surface touching u=50), if it moves in +u direction (toward the wall, outward), it penetrates. So "approaching the wall" means the ball moves in +n direction.
+
+v_n = v_rel · n where v_rel = v_ball - v_wall (velocity of ball relative to the wall at the contact point). If v_n > 0, the ball is moving toward the wall (relative to the wall) → collision, need to bounce. If v_n < 0, the ball is moving away from the wall (relative to the wall) → separating.
+
+Now, the case where the wall pushes the ball: the wall moves in +n direction (outward) faster than the ball. So v_wall has +n component larger than v_ball's +n component. Then v_rel_n = v_ball_n - v_wall_n < 0. So v_n < 0. According to my convention, this is "separating" (ball moving away from wall relative to wall). But physically, the wall is pushing the ball!
+
+Wait, no. If the wall moves outward (+n) faster than the ball, then relative to the wall, the ball is moving inward (-n), i.e., away from the wall. So the ball is NOT approaching the wall; the wall is moving away from the ball
+
+
+

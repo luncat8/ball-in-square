@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Ball in Square Hole</title>
+<style>
+  html,body{margin:0;height:100%;background:#0b0f14;overflow:hidden;font-family:system-ui,Segoe UI,Roboto,sans-serif;color:#cfd6e0}
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  canvas{background:#0b0f14;display:block;box-shadow:0 0 40px rgba(0,0,0,.6)}
+  #panel{position:fixed;top:12px;left:12px;z-index:10;background:rgba(20,26,34,.85);padding:10px 14px;border-radius:8px;font-size:13px;line-height:1.5;backdrop-filter:blur(6px);border:1px solid #2a3442}
+  #panel label{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+  #panel input{width:16px;height:16px;accent-color:#4ea1ff}
+  #panel .info{margin-top:8px;color:#8a93a3;font-size:11px}
+  #panel .info b{color:#cfd6e0}
+</style>
+</head>
+<body>
+<div id="panel">
+  <label><input type="checkbox" id="rot"> Free Rotation</label>
+  <div class="info">Field 1024&times;1024 (xy-wrap)<br/>Square 200&times;200, hole 100&times;100 (50px walls)<br/>Ball r=5, mass=1, square mass=1</div>
+</div>
+<div id="wrap"><canvas id="c" width="1024" height="1024"></div>
+<script>
+// Rigid-body physics: ball (r=5, m=1) inside a 100x100 hole of a 200x200 square (mass 1, 50px walls).
+// Field 1024x1024 with xy-wrap (torus). Physics is translation-invariant, so we integrate in
+// continuous coords and render with mod-1024 wrapping + 9-copy tiling to show the torus.
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = 1024, H = 1024;
+
+// ---- geometry ----
+const A = 100;        // square outer half-extent (200 wide)
+const B = 50;         // hole half-extent (100 wide)
+const R = 5;          // ball radius
+const M_SQ = 1;       // square mass
+const M_BALL = 1;     // ball mass
+const HOLE_INNER = B - R; // ball-center constraint half-extent (45)
+// moment of inertia of the frame (square side 2A with concentric square hole side 2B), frame mass 1:
+// I = (2/3)(A^2 + B^2)
+const I = (2 / 3) * (A * A + B * B);
+
+// ---- state (continuous coords) ----
+let sq = { x: 512, y: 512, vx: 0, vy: 0, a: 0, w: 0 };
+let ball = { x: 512, y: 512, vx: 60, vy: 45 };
+let freeRotation = false;
+
+// ---- helpers ----
+function wrap(v, size) { const m = v % size; return m < 0 ? m + size : m; }
+
+// integrate one dt with n substeps
+function step(dt) {
+  const ballSpeed = Math.hypot(ball.vx, ball.vy);
+  const sqSpeed = Math.hypot(sq.vx, sq.vy) + Math.abs(sq.w) * A;
+  const maxSpeed = Math.max(ballSpeed, sqSpeed, 1);
+  const travel = maxSpeed * dt;
+  let n = Math.ceil(travel / (0.5 * 2 * R)); // keep travel < ball diameter
+  if (n < 1) n = 1;
+  if (n > 200) n = 200;
+  const h = dt / n;
+  for (let i = 0; i < n; i++) substep(h);
+}
+
+function substep(dt) {
+  // --- integrate square (translation always free; rotation only if freeRotation) ---
+  sq.x += sq.vx * dt;
+  sq.y += sq.vy * dt;
+  if (freeRotation) sq.a += sq.w * dt;
+
+  // --- integrate ball ---
+  ball.x += ball.vx * dt;
+  ball.y += ball.vy * dt;
+
+  // --- resolve ball vs square hole (in square local frame) ---
+  const ca = Math.cos(sq.a), sa = Math.sin(sq.a);
+  const dx = ball.x - sq.x;
+  const dy = ball.y - sq.y;
+  const lx = dx * ca + dy * sa;
+  const ly = -dx * sa + dy * ca;
+
+  const penX = Math.abs(lx) - HOLE_INNER;
+  const penY = Math.abs(ly) - HOLE_INNER;
+
+  if (penX > 0 || penY > 0) {
+    // velocity of the square material point at the ball location: V + w x r, r = (dx,dy)
+    const pvx = sq.vx - sq.w * dy;
+    const pvy = sq.vy + sq.w * dx;
+    const rvx = ball.vx - pvx;
+    const rvy = ball.vy - pvy;
+
+    let nx, ny; // local normal (points from wall toward hole interior)
+    let clampX = false, clampY = false;
+    if (penX > 0 && penY > 0) {
+      // concave corner: diagonal normal toward center
+      const sgnx = -Math.sign(lx), sgny = -Math.sign(ly);
+      const inv = 1 / Math.SQRT2;
+      nx = sgnx * inv; ny = sgny * inv;
+      clampX = clampY = true;
+    } else if (penX >= penY) {
+      nx = -Math.sign(lx); ny = 0; clampX = true;
+    } else {
+      nx = 0; ny = -Math.sign(ly); clampY = true;
+    }
+    // world normal
+    const nwx = nx * ca - ny * sa;
+    const nwy = nx * sa + ny * ca;
+
+    const rvn = rvx * nwx + rvy * nwy;
+    if (rvn < 0) {
+      // r x n (z component), r = (dx,dy)
+      const rxn = dx * nwy - dy * nwx;
+      const invEff = 1 / M_BALL + 1 / M_SQ + (rxn * rxn) / I;
+      const J = -2 * rvn / invEff; // e=1
+      ball.vx += J / M_BALL * nwx;
+      ball.vy += J / M_BALL * nwy;
+      sq.vx -= J / M_SQ * nwx;
+      sq.vy -= J / M_SQ * nwy;
+      if (freeRotation) sq.w -= J * rxn / I;
+    }
+
+    // position correction: push ball out of the wall (in local frame)
+    const clx = clampX ? Math.sign(lx) * HOLE_INNER : lx;
+    const cly = clampY ? Math.sign(ly) * HOLE_INNER : ly;
+    ball.x = sq.x + (clx * ca - cly * sa);
+    ball.y = sq.y + (clx * sa + cly * ca);
+  }
+}
+
+// ---- rendering ----
+function draw() {
+  ctx.fillStyle = '#0b0f14';
+  ctx.fillRect(0, 0, W, H);
+
+  // grid hint
+  ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= W; i += 64) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,H); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(W,i); ctx.stroke(); }
+
+  // square (with hole) drawn with 9-copy tiling to handle wrap straddling
+  ctx.fillStyle = '#3a4a63';
+  ctx.strokeStyle = '#9fb4d8';
+  ctx.lineWidth = 2;
+  for (let j = -1; j <= 1; j++) {
+    for (let i = -1; i <= 1; i++) {
+      const ox = i * W, oy = j * H;
+      const cx = wrap(sq.x, W) + ox;
+      const cy = wrap(sq.y, H) + oy;
+      if (cx < -A || cx > W + A || cy < -A || cy > H + A) continue;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(sq.a);
+      ctx.beginPath();
+      ctx.rect(-A, -A, 2 * A, 2 * A);
+      ctx.rect(-B, -B, 2 * B, 2 * B);
+      ctx.fill('evenodd');
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // ball 9-copy
+  ctx.fillStyle = '#ff5d5d';
+  const bx = wrap(ball.x, W), by = wrap(ball.y, H);
+  for (let j = -1; j <= 1; j++) {
+    for (let i = -1; i <= 1; i++) {
+      const x = bx + i * W, y = by + j * H;
+      if (x < -R || x > W + R || y < -R || y > H + R) continue;
+      ctx.beginPath();
+      ctx.arc(x, y, R, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+// ---- main loop ----
+let last = performance.now();
+function frame(now) {
+  let dt = (now - last) / 1000;
+  last = now;
+  if (dt > 0.05) dt = 0.05; // clamp big gaps
+  step(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+
+// ---- UI ----
+document.getElementById('rot').addEventListener('change', e => {
+  freeRotation = e.target.checked;
+  if (!freeRotation) sq.w = 0;
+});
+
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

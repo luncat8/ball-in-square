@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { margin: 0; background: #111; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+  canvas { border: 1px solid #333; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1024" height="1024"></canvas>
+<script>
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const W = 1024, H = 1024;
+
+  const ball = {
+    x: 512, y: 512,
+    vx: 3, vy: 2,
+    r: 10,
+    mass: 1
+  };
+
+  const square = {
+    x: 412, y: 412,
+    w: 200, h: 200,
+    vx: 0, vy: 0,
+    mass: 1,
+    holeX: 50, holeY: 50,
+    holeW: 100, holeH: 100
+  };
+
+  function clamp(v, lo, hi) {
+    return Math.max(lo, Math.min(v, hi));
+  }
+
+  function closestPointOnRect(px, py, rx, ry, rw, rh) {
+    return {
+      x: clamp(px, rx, rx + rw),
+      y: clamp(py, ry, ry + rh)
+    };
+  }
+
+  function rectCircleCollision(cx, cy, cr, rx, ry, rw, rh) {
+    const cp = closestPointOnRect(cx, cy, rx, ry, rw, rh);
+    const dx = cx - cp.x;
+    const dy = cy - cp.y;
+    const distSq = dx * dx + dy * dy;
+    if (distSq < cr * cr && distSq > 0) {
+      const dist = Math.sqrt(distSq);
+      return { nx: dx / dist, ny: dy / dist, penetration: cr - dist };
+    }
+    if (distSq === 0) {
+      const halfW = rw / 2, halfH = rh / 2;
+      const localX = cx - (rx + halfW);
+      const localY = cy - (ry + halfH);
+      const absX = Math.abs(localX) - halfW;
+      const absY = Math.abs(localY) - halfH;
+      if (absX > absY) {
+        return { nx: localX > 0 ? 1 : -1, ny: 0, penetration: cr };
+      } else {
+        return { nx: 0, ny: localY > 0 ? 1 : -1, penetration: cr };
+      }
+    }
+    return null;
+  }
+
+  function getWalls() {
+    const sx = square.x, sy = square.y, sw = square.w, sh = square.h;
+    const hx = square.holeX, hy = square.holeY, hw = square.holeW, hh = square.holeH;
+    return [
+      { x: sx, y: sy, w: sw, h: hy },
+      { x: sx, y: sy + hy + hh, w: sw, h: sh - hy - hh },
+      { x: sx, y: sy + hy, w: hx, h: hh },
+      { x: sx + hx + hw, y: sy + hy, w: sw - hx - hw, h: hh }
+    ];
+  }
+
+  function applyImpulse(nx, ny, penetration) {
+    const dvx = ball.vx - square.vx;
+    const dvy = ball.vy - square.vy;
+    const dvDotN = dvx * nx + dvy * ny;
+
+    if (dvDotN < 0) {
+      const j = -dvDotN;
+      ball.vx += j * nx;
+      ball.vy += j * ny;
+      square.vx -= j * nx;
+      square.vy -= j * ny;
+    }
+
+    const totalMass = ball.mass + square.mass;
+    const corr = penetration / totalMass;
+    ball.x += nx * corr * square.mass;
+    ball.y += ny * corr * square.mass;
+    square.x -= nx * corr * ball.mass;
+    square.y -= ny * corr * ball.mass;
+  }
+
+  function resolveCollision() {
+    const walls = getWalls();
+    let bestPen = 0, bestNx = 0, bestNy = 0;
+
+    for (const wall of walls) {
+      for (let sx = -W; sx <= W; sx += W) {
+        for (let sy = -H; sy <= H; sy += H) {
+          const col = rectCircleCollision(ball.x + sx, ball.y + sy, ball.r, wall.x, wall.y, wall.w, wall.h);
+          if (col && col.penetration > bestPen) {
+            bestPen = col.penetration;
+            bestNx = col.nx;
+            bestNy = col.ny;
+          }
+        }
+      }
+    }
+
+    if (bestPen > 0) {
+      applyImpulse(bestNx, bestNy, bestPen);
+    }
+  }
+
+  function wrapPos(obj) {
+    if (obj.x < 0) obj.x += W;
+    else if (obj.x >= W) obj.x -= W;
+    if (obj.y < 0) obj.y += H;
+    else if (obj.y >= H) obj.y -= H;
+  }
+
+  function update() {
+    ball.x += ball.vx;
+    ball.y += ball.vy;
+    square.x += square.vx;
+    square.y += square.vy;
+
+    wrapPos(ball);
+    wrapPos(square);
+
+    resolveCollision();
+  }
+
+  function draw() {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#444';
+    ctx.fillRect(square.x, square.y, square.w, square.h);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(square.x + square.holeX, square.y + square.holeY, square.holeW, square.holeH);
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  loop();
+</script>
+</body>
+</html>

@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>1024 wrap square hole ball</title>
+	<style>
+		body {
+			margin: 0;
+			background: #111;
+			color: #ddd;
+			font-family: monospace;
+		}
+		#ui {
+			padding: 8px;
+		}
+		canvas {
+			display: block;
+			margin: 0 auto;
+			max-width: 100%;
+			height: auto;
+			background: #101418;
+		}
+	</style>
+</head>
+<body>
+	<div id="ui">
+		<label>
+			<input type="checkbox" id="rot">
+			enable square rotation
+		</label>
+		<button id="reset">reset</button>
+		<span id="hud"></span>
+	</div>
+	<canvas id="c" width="1024" height="1024"></canvas>
+
+	<script>
+		'use strict';
+
+		const FIELD = 1024;
+		const HALF_FIELD = FIELD * 0.5;
+
+		const SQUARE_HALF = 100;
+		const HOLE_HALF = 50;
+		const BALL_R = 5;
+
+		const SQUARE_MASS = 1;
+		const BALL_MASS = 1;
+
+		const OUTER_SIDE = SQUARE_HALF * 2;
+		const HOLE_SIDE = HOLE_HALF * 2;
+
+		// Uniform square frame with centered square hole, total mass = 1.
+		const SQUARE_I =
+			(
+				OUTER_SIDE * OUTER_SIDE * OUTER_SIDE * OUTER_SIDE -
+				HOLE_SIDE * HOLE_SIDE * HOLE_SIDE * HOLE_SIDE
+			) /
+			(
+				6 *
+				(
+					OUTER_SIDE * OUTER_SIDE -
+					HOLE_SIDE * HOLE_SIDE
+				)
+			);
+
+		const DT = 1 / 60;
+		const SUBSTEPS = 8;
+		const EPS = 1e-9;
+
+		const canvas = document.getElementById('c');
+		const ctx = canvas.getContext('2d');
+		const rotBox = document.getElementById('rot');
+		const hud = document.getElementById('hud');
+
+		let square = {
+			x: HALF_FIELD,
+			y: HALF_FIELD,
+			vx: 0,
+			vy: 0,
+			angle: 0,
+			omega: 0
+		};
+
+		let ball = {
+			x: HALF_FIELD,
+			y: HALF_FIELD,
+			vx: 128,
+			vy: 64
+		};
+
+		function reset() {
+			square.x = HALF_FIELD;
+			square.y = HALF_FIELD;
+			square.vx = 0;
+			square.vy = 0;
+			square.angle = 0;
+			square.omega = 0;
+
+			ball.x = HALF_FIELD;
+			ball.y = HALF_FIELD;
+			ball.vx = 128;
+			ball.vy = 64;
+		}
+
+		document.getElementById('reset').addEventListener('click', reset);
+
+		function clamp(v, a, b) {
+			return v < a ? a : (v > b ? b : v);
+		}
+
+		function wrapPos(o) {
+			o.x = o.x % FIELD;
+			if (o.x < 0) o.x += FIELD;
+
+			o.y = o.y % FIELD;
+			if (o.y < 0) o.y += FIELD;
+		}
+
+		// Wrap-safe vector from b to a on a torus.
+		// This is the important part for the square xy-wrap bug.
+		function torusVec(ax, ay, bx, by) {
+			let dx = ax - bx;
+			let dy = ay - by;
+
+			if (dx > HALF_FIELD) dx -= FIELD;
+			else if (dx < -HALF_FIELD) dx += FIELD;
+
+			if (dy > HALF_FIELD) dy -= FIELD;
+			else if (dy < -HALF_FIELD) dy += FIELD;
+
+			return { x: dx, y: dy };
+		}
+
+		function rot(v, a) {
+			const c = Math.cos(a);
+			const s = Math.sin(a);
+			return {
+				x: v.x * c - v.y * s,
+				y: v.x * s + v.y * c
+			};
+		}
+
+		function dot(a, b) {
+			return a.x * b.x + a.y * b.y;
+		}
+
+		function cross(a, b) {
+			return a.x * b.y - a.y * b.x;
+		}
+
+		function solveLinear(A, b) {
+			const n = b.length;
+
+			for (let i = 0; i < n; i++) {
+				let p = i;
+
+				for (let r = i + 1; r < n; r++) {
+					if (Math.abs(A[r][i]) > Math.abs(A[p][i])) {
+						p = r;
+					}
+				}
+
+				if (Math.abs(A[p][i]) < 1e-12) {
+					return null;
+				}
+
+				if (p !== i) {
+					const ta = A[i];
+					A[i] = A[p];
+					A[p] = ta;
+
+					const tb = b[i];
+					b[i] = b[p];
+					b[p] = tb;
+				}
+
+				const pv = A[i][i];
+
+				for (let c = i; c < n; c++) {
+					A[i][c] /= pv;
+				}
+
+				b[i] /= pv;
+
+				for (let r = 0; r < n; r++) {
+					if (r === i) continue;
+
+					const f = A[r][i];
+					if (f === 0) continue;
+
+					for (let c = i; c < n; c++) {
+						A[r][c] -= f * A[i][c];
+					}
+
+					b[r] -= f * b[i];
+				}
+			}
+
+			return b;
+		}
+
+		function collectContacts() {
+			// Ball position relative to square center, wrap-safe.
+			const d = torusVec(ball.x, ball.y, square.x, square.y);
+
+			// Ball position in square local frame.
+			const local = rot(d, -square.angle);
+
+			const contacts = [];
+			const H = HOLE_HALF;
+			const r = BALL_R;
+
+			// Right inner wall.
+			let yq = clamp(local.y, -H, H);
+			let p = { x: H, y: yq };
+			let dist = Math.hypot(local.x - H, local.y - yq);
+
+			if (dist <= r + EPS) {
+				contacts.push({
+					p: p,
+					nLocal: { x: -1, y: 0 },
+					pen: r - (H - local.x)
+				});
+			}
+
+			// Left inner wall.
+			yq = clamp(local.y, -H, H);
+			p = { x: -H, y: yq };
+			dist = Math.hypot(local.x + H, local.y - yq);
+
+			if (dist <= r + EPS) {
+				contacts.push({
+					p: p,
+					nLocal: { x: 1, y: 0 },
+					pen: r - (local.x + H)
+				});
+			}
+
+			// Top inner wall.
+			let xq = clamp(local.x, -H, H);
+			p = { x: xq, y: H };
+			dist = Math.hypot(local.x - xq, local.y - H);
+
+			if (dist <= r + EPS) {
+				contacts.push({
+					p: p,
+					nLocal: { x: 0, y: -1 },
+					pen: r - (H - local.y)
+				});
+			}
+
+			// Bottom inner wall.
+			xq = clamp(local.x, -H, H);
+			p = { x: xq, y: -H };
+			dist = Math.hypot(local.x - xq, local.y + H);
+
+			if (dist <= r + EPS) {
+				contacts.push({
+					p: p,
+					nLocal: { x: 0, y: 1 },
+					pen: r - (local.y + H)
+				});
+			}
+
+			const rotationOn = rotBox.checked;
+			const omega = rotationOn ? square.omega : 0;
+
+			for (let i = 0; i < contacts.length; i++) {
+				const n = rot(contacts[i].nLocal, square.angle);
+				const pp = rot(contacts[i].p, square.angle);
+
+				contacts[i].n = n;
+				contacts[i].r = pp;
+
+				const vcx = square.vx - omega * pp.y;
+				const vcy = square.vy + omega * pp.x;
+
+				contacts[i].vn =
+					(ball.vx - vcx) * n.x +
+					(ball.vy - vcy) * n.y;
+			}
+
+			return contacts;
+		}
+
+		function resolveContacts() {
+			const rotationOn = rotBox.checked;
+			const invI = rotationOn ? 1 / SQUARE_I : 0;
+			const invM = 1 / BALL_MASS + 1 / SQUARE_MASS;
+
+			for (let iter = 0; iter < 8; iter++) {
+				const contacts = collectContacts();
+
+				if (contacts.length === 0) {
+					break;
+				}
+
+				let any = false;
+
+				for (const c of contacts) {
+					if (c.pen > EPS || c.vn < -EPS) {
+						any = true;
+						break;
+					}
+				}
+
+				if (!any) {
+					break;
+				}
+
+				// Velocity impulse solve.
+				const app = [];
+
+				for (const c of contacts) {
+					if (c.vn < -EPS) {
+						app.push(c);
+					}
+				}
+
+				if (app.length > 0) {
+					const N = app.length;
+					const A = [];
+					const b = [];
+
+					for (let i = 0; i < N; i++) {
+						A.push(new Array(N).fill(0));
+						b.push(0);
+					}
+
+					for (let i = 0; i < N; i++) {
+						for (let j = 0; j < N; j++) {
+							let val = dot(app[i].n, app[j].n) * invM;
+
+							if (invI !== 0) {
+								val +=
+									cross(app[i].r, app[i].n) *
+									cross(app[j].r, app[j].n) *
+									invI;
+							}
+
+							A[i][j] = val;
+						}
+
+						// e = 1, fully elastic.
+						b[i] = -2 * app[i].vn;
+					}
+
+					const J = solveLinear(A, b);
+
+					if (J) {
+						for (let j = 0; j < N; j++) {
+							let jj = J[j];
+
+							if (jj < 0) jj = 0;
+							if (jj === 0) continue;
+
+							ball.vx += (jj / BALL_MASS) * app[j].n.x;
+							ball.vy += (jj / BALL_MASS) * app[j].n.y;
+
+							square.vx -= (jj / SQUARE_MASS) * app[j].n.x;
+							square.vy -= (jj / SQUARE_MASS) * app[j].n.y;
+
+							if (invI !== 0) {
+								square.omega -=
+									jj *
+									cross(app[j].r, app[j].n) *
+									invI;
+							}
+						}
+					} else {
+						// Fallback: sequential single-contact impulses.
+						for (const c of app) {
+							let eff = invM;
+
+							if (invI !== 0) {
+								eff +=
+									cross(c.r, c.n) *
+									cross(c.r, c.n) *
+									invI;
+							}
+
+							const jj = -2 * c.vn / eff;
+
+							ball.vx += (jj / BALL_MASS) * c.n.x;
+							ball.vy += (jj / BALL_MASS) * c.n.y;
+
+							square.vx -= (jj / SQUARE_MASS) * c.n.x;
+							square.vy -= (jj / SQUARE_MASS) * c.n.y;
+
+							if (invI !== 0) {
+								square.omega -=
+									jj *
+									cross(c.r, c.n) *
+									invI;
+							}
+						}
+					}
+				}
+
+				// Positional correction.
+				// This does not change velocities, only removes overlap.
+				const pens = [];
+
+				for (const c of contacts) {
+					if (c.pen > EPS) {
+						pens.push(c);
+					}
+				}
+
+				if (pens.length > 0) {
+					const N = pens.length;
+					const A = [];
+					const b = [];
+
+					for (let i = 0; i < N; i++) {
+						A.push(new Array(N).fill(0));
+						b.push(0);
+					}
+
+					for (let i = 0; i < N; i++) {
+						for (let j = 0; j < N; j++) {
+							A[i][j] = dot(pens[i].n, pens[j].n) * invM;
+						}
+
+						b[i] = pens[i].pen;
+					}
+
+					const D = solveLinear(A, b);
+
+					if (D) {
+						for (let j = 0; j < N; j++) {
+							let dj = D[j];
+
+							if (dj < 0) dj = 0;
+							if (dj === 0) continue;
+
+							ball.x += (dj / BALL_MASS) * pens[j].n.x;
+							ball.y += (dj / BALL_MASS) * pens[j].n.y;
+
+							square.x -= (dj / SQUARE_MASS) * pens[j].n.x;
+							square.y -= (dj / SQUARE_MASS) * pens[j].n.y;
+						}
+
+						wrapPos(ball);
+						wrapPos(square);
+					} else {
+						// Fallback: simple per-contact correction.
+						for (const c of pens) {
+							const dj = c.pen / invM;
+
+							ball.x += (dj / BALL_MASS) * c.n.x;
+							ball.y += (dj / BALL_MASS) * c.n.y;
+
+							square.x -= (dj / SQUARE_MASS) * c.n.x;
+							square.y -= (dj / SQUARE_MASS) * c.n.y;
+						}
+
+						wrapPos(ball);
+						wrapPos(square);
+					}
+				}
+			}
+		}
+
+		function step(dt) {
+			const h = dt / SUBSTEPS;
+
+			for (let i = 0; i < SUBSTEPS; i++) {
+				if (rotBox.checked) {
+					square.angle += square.omega * h;
+
+					if (square.angle > Math.PI) {
+						square.angle -= 2 * Math.PI;
+					} else if (square.angle < -Math.PI) {
+						square.angle += 2 * Math.PI;
+					}
+				} else {
+					square.omega = 0;
+				}
+
+				square.x += square.vx * h;
+				square.y += square.vy * h;
+
+				ball.x += ball.vx * h;
+				ball.y += ball.vy * h;
+
+				wrapPos(square);
+				wrapPos(ball);
+
+				resolveContacts();
+			}
+		}
+
+		function drawSquare(cx, cy) {
+			ctx.save();
+			ctx.translate(cx, cy);
+			ctx.rotate(square.angle);
+
+			ctx.beginPath();
+			ctx.rect(-SQUARE_HALF, -SQUARE_HALF, SQUARE_HALF * 2, SQUARE_HALF * 2);
+			ctx.rect(-HOLE_HALF, -HOLE_HALF, HOLE_HALF * 2, HOLE_HALF * 2);
+
+			ctx.fillStyle = '#365062';
+			ctx.fill('evenodd');
+
+			ctx.strokeStyle = '#6fa8ff';
+			ctx.lineWidth = 2;
+			ctx.stroke();
+
+			ctx.restore();
+		}
+
+		function draw() {
+			ctx.fillStyle = '#101418';
+			ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+			// Draw wrapped square copies.
+			for (let dx = -FIELD; dx <= FIELD; dx += FIELD) {
+				for (let dy = -FIELD; dy <= FIELD; dy += FIELD) {
+					const cx = square.x + dx;
+					const cy = square.y + dy;
+
+					if (cx < -SQUARE_HALF || cx > FIELD + SQUARE_HALF) continue;
+					if (cy < -SQUARE_HALF || cy > FIELD + SQUARE_HALF) continue;
+
+					drawSquare(cx, cy);
+				}
+			}
+
+			// Draw wrapped ball copies.
+			for (let dx = -FIELD; dx <= FIELD; dx += FIELD) {
+				for (let dy = -FIELD; dy <= FIELD; dy += FIELD) {
+					const bx = ball.x + dx;
+					const by = ball.y + dy;
+
+					if (bx < -BALL_R || bx > FIELD + BALL_R) continue;
+					if (by < -BALL_R || by > FIELD + BALL_R) continue;
+
+					ctx.beginPath();
+					ctx.arc(bx, by, BALL_R, 0, Math.PI * 2);
+					ctx.fillStyle = '#e0393e';
+					ctx.fill();
+				}
+			}
+
+			const rotOn = rotBox.checked;
+
+			const ke =
+				0.5 * BALL_MASS * (ball.vx * ball.vx + ball.vy * ball.vy) +
+				0.5 * SQUARE_MASS * (square.vx * square.vx + square.vy * square.vy) +
+				(rotOn ? 0.5 * SQUARE_I * square.omega * square.omega : 0);
+
+			hud.textContent = 'KE ' + String(ke);
+		}
+
+		let last = performance.now();
+		let acc = 0;
+
+		function frame(now) {
+			let delta = (now - last) * 0.001;
+			last = now;
+
+			if (delta > 0.25) {
+				delta = 0.25;
+			}
+
+			acc += delta;
+
+			while (acc >= DT) {
+				step(DT);
+				acc -= DT;
+			}
+
+			draw();
+			requestAnimationFrame(frame);
+		}
+
+		requestAnimationFrame(frame);
+	</script>
+</body>
+</html>

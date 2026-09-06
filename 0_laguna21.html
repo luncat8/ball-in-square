@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ball in Square - Elastic Physics</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { overflow: hidden; background: #111; }
+canvas { display: block; margin: 0 auto; background: #000; }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+canvas.width = 1024;
+canvas.height = 1024;
+
+const FIELD_W = 1024;
+const FIELD_H = 1024;
+const BALL_R = 5;
+
+const FRAME_SIZE = 200;
+const HOLE_SIZE = 100;
+const FRAME_MASS = 1;
+const BALL_MASS = 1;
+
+const frame = {
+	x: 512,
+	y: 512,
+	vx: 0,
+	vy: 0
+};
+
+const ball = {
+	x: 512,
+	y: 512,
+	vx: 400,
+	vy: 200
+};
+
+const DT = 1 / 120;
+const SUBSTEPS = 4;
+
+function getInnerWalls() {
+	const hl = frame.x - HOLE_SIZE / 2;
+	const hr = frame.x + HOLE_SIZE / 2;
+	const ht = frame.y - HOLE_SIZE / 2;
+	const hb = frame.y + HOLE_SIZE / 2;
+	return [
+		{ nx: 1,  ny: 0,  wx: hl, wy: 0 },
+		{ nx: -1, ny: 0,  wx: hr, wy: 0 },
+		{ nx: 0,  ny: 1,  wx: 0, wy: ht },
+		{ nx: 0,  ny: -1, wx: 0, wy: hb }
+	];
+}
+
+function resolveBallFrameCollisions() {
+	const walls = getInnerWalls();
+	for (const w of walls) {
+		const dist = w.nx * (ball.x - w.wx) + w.ny * (ball.y - w.wy);
+		if (dist < BALL_R) {
+			const rv = (ball.vx - frame.vx) * w.nx + (ball.vy - frame.vy) * w.ny;
+			if (rv < 0) {
+				const m1 = BALL_MASS;
+				const m2 = FRAME_MASS;
+				const j = -(1 + 1) * rv / (1 / m1 + 1 / m2);
+				ball.vx += (j / m1) * w.nx;
+				ball.vy += (j / m1) * w.ny;
+				frame.vx -= (j / m2) * w.nx;
+				frame.vy -= (j / m2) * w.ny;
+			}
+			ball.x += (BALL_R - dist) * w.nx;
+			ball.y += (BALL_R - dist) * w.ny;
+		}
+	}
+}
+
+function resolveFrameFieldWalls() {
+	const half = FRAME_SIZE / 2;
+	if (frame.x - half < 0) {
+		frame.x = half;
+		frame.vx = -frame.vx;
+	}
+	if (frame.x + half > FIELD_W) {
+		frame.x = FIELD_W - half;
+		frame.vx = -frame.vx;
+	}
+	if (frame.y - half < 0) {
+		frame.y = half;
+		frame.vy = -frame.vy;
+	}
+	if (frame.y + half > FIELD_H) {
+		frame.y = FIELD_H - half;
+		frame.vy = -frame.vy;
+	}
+}
+
+function update() {
+	for (let i = 0; i < SUBSTEPS; i++) {
+		const subDT = DT / SUBSTEPS;
+		ball.x += ball.vx * subDT;
+		ball.y += ball.vy * subDT;
+		frame.x += frame.vx * subDT;
+		frame.y += frame.vy * subDT;
+		resolveBallFrameCollisions();
+		resolveFrameFieldWalls();
+	}
+}
+
+function draw() {
+	ctx.fillStyle = '#000';
+	ctx.fillRect(0, 0, FIELD_W, FIELD_H);
+
+	ctx.strokeStyle = '#555';
+	ctx.lineWidth = 1;
+	ctx.setLineDash([5, 5]);
+	ctx.strokeRect(0, 0, FIELD_W, FIELD_H);
+	ctx.setLineDash([]);
+
+	ctx.fillStyle = '#0af';
+	ctx.fillRect(frame.x - FRAME_SIZE / 2, frame.y - FRAME_SIZE / 2, FRAME_SIZE, FRAME_SIZE);
+
+	ctx.fillStyle = '#000';
+	ctx.fillRect(frame.x - HOLE_SIZE / 2, frame.y - HOLE_SIZE / 2, HOLE_SIZE, HOLE_SIZE);
+
+	ctx.strokeStyle = '#fff';
+	ctx.lineWidth = 2;
+	ctx.strokeRect(frame.x - FRAME_SIZE / 2, frame.y - FRAME_SIZE / 2, FRAME_SIZE, FRAME_SIZE);
+
+	ctx.strokeStyle = '#0ff';
+	ctx.lineWidth = 1;
+	ctx.strokeRect(frame.x - HOLE_SIZE / 2, frame.y - HOLE_SIZE / 2, HOLE_SIZE, HOLE_SIZE);
+
+	ctx.fillStyle = '#f00';
+	ctx.beginPath();
+	ctx.arc(ball.x, ball.y, BALL_R, 0, Math.PI * 2);
+	ctx.fill();
+	ctx.strokeStyle = '#fff';
+	ctx.lineWidth = 1;
+	ctx.stroke();
+}
+
+function loop() {
+	update();
+	draw();
+	requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>

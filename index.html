@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Ball in Square — LLM Implementation Comparison</title>
+	<style>
+		:root {
+			--bg: #0b1020;
+			--panel: #121a33;
+			--border: #263258;
+			--text: #dfe7ff;
+			--muted: #8ea0d0;
+			--accent: #7ee0ff;
+			--best: #2dd4bf;
+			--warn: #f59e0b;
+			--bug: #f87171;
+			--note: #a78bfa;
+		}
+		* { box-sizing: border-box; }
+		html, body {
+			margin: 0;
+			background: radial-gradient(1200px 800px at 50% -10%, #16204a, var(--bg));
+			color: var(--text);
+			font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+			line-height: 1.55;
+		}
+		.wrap { max-width: 1080px; margin: 0 auto; padding: 32px 20px 80px; }
+		h1 { font-size: 22px; margin: 0 0 4px; color: #cfe0ff; letter-spacing: .5px; }
+		h1 .sub { display: block; font-size: 12px; color: var(--muted); font-weight: 400; margin-top: 4px; letter-spacing: 0; }
+		h2 { font-size: 16px; margin: 36px 0 12px; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+		h3 { font-size: 14px; margin: 18px 0 8px; color: #cfe0ff; }
+		p, li { font-size: 13.5px; }
+		.lead { color: var(--muted); font-size: 13.5px; max-width: 780px; }
+		.card {
+			background: var(--panel);
+			border: 1px solid var(--border);
+			border-radius: 10px;
+			padding: 14px 16px;
+			margin: 10px 0;
+		}
+		.card.best { border-left: 3px solid var(--best); }
+		.card.warn { border-left: 3px solid var(--warn); }
+		.card.bug  { border-left: 3px solid var(--bug); }
+		.card.note { border-left: 3px solid var(--note); }
+		.row { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
+		.row .name { font-weight: 600; color: #cfe0ff; }
+		.row .tag {
+			font-size: 10.5px;
+			padding: 2px 7px;
+			border-radius: 999px;
+			border: 1px solid var(--border);
+			color: var(--muted);
+			text-transform: uppercase;
+			letter-spacing: .5px;
+		}
+		.tag.best  { color: var(--best);  border-color: rgba(45,212,191,.5); }
+		.tag.bug   { color: var(--bug);   border-color: rgba(248,113,113,.5); }
+		.tag.warn  { color: var(--warn);  border-color: rgba(245,158,11,.5); }
+		.tag.note  { color: var(--note);  border-color: rgba(167,139,250,.5); }
+		.tag.ok    { color: #86efac;      border-color: rgba(134,239,172,.4); }
+		a.file {
+			color: #cfe0ff;
+			text-decoration: none;
+			border-bottom: 1px dotted #4a63aa;
+		}
+		a.file:hover { color: #fff; border-bottom-color: #fff; }
+		ul.issues { margin: 6px 0 0 0; padding-left: 18px; }
+		ul.issues li { margin: 3px 0; color: #c8d2ec; }
+		ul.issues li b { color: #ffb4b4; font-weight: 600; }
+		ul.issues li em { color: #ffd29b; font-style: normal; }
+		.desc { color: var(--muted); font-size: 12.5px; margin: 4px 0 6px; }
+		.legend { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 12px; color: var(--muted); margin-top: 8px; }
+		.legend span::before { content: "■"; margin-right: 5px; }
+		.legend .b::before { color: var(--best); }
+		.legend .n::before { color: var(--note); }
+		.legend .w::before { color: var(--warn); }
+		.legend .e::before { color: var(--bug); }
+		.footer { color: var(--muted); font-size: 11.5px; margin-top: 40px; text-align: center; }
+		.shortcuts a.file { display: inline-block; margin-right: 10px; }
+	</style>
+</head>
+<body>
+	<div class="wrap">
+		<h1>Ball in a Square Hole — LLM Implementation Comparison
+			<span class="sub">1024×1024 toroidal field · 200×200 square with 100×100 hole · ball Ø10 · both bodies mass 1 · perfectly elastic, no friction</span>
+		</h1>
+		<p class="lead">
+			Each file below is an independent attempt by a different LLM at the same brief:
+			a ball bouncing inside a concave square on a wrapping 1024² plane, with total momentum and kinetic
+			energy exactly conserved. This index summarises what each one does, what is broken or risky, and
+			highlights the strongest entries. Source files live next to this <code>index.html</code>.
+		</p>
+
+		<div class="legend">
+			<span class="b">Best / reference</span>
+			<span class="n">Notable / ambitious</span>
+			<span class="w">Caveats</span>
+			<span class="e">Bugs / wrong physics</span>
+		</div>
+
+		<h2>Round 0 — minimal brief (no rotation)</h2>
+		<p class="desc">First wave of attempts, mostly short single-file scripts. Mixed quality.</p>
+
+		<div class="card best">
+			<div class="row">
+				<span class="name"><a class="file" href="0!_glm52max.html">0!_glm52max.html</a></span>
+				<span class="tag best">Best overall</span>
+				<span class="tag ok">Conservation HUD</span>
+				<span class="tag ok">Wrap-aware</span>
+			</div>
+			<div class="desc">Most polished. Impulse-based 1-D normal-velocity swap on the four inner edges, fixed 1/240 s sub-step accumulator, wrap-aware relative coordinates, full conservation diagnostics (Σp, |Σp|, ΣKE, COM drift), velocity vectors, trail, time-scale slider.</div>
+			<ul class="issues">
+				<li>Only inner edges are checked — if a future edit lets the ball enter the frame body it will not be pushed back out.</li>
+				<li>No cap on <em>|v|</em>; with time-scale = 2 and a kick the per-step travel can exceed the ball radius, risking tunneling.</li>
+			</ul>
+		</div>
+
+		<div class="card best">
+			<div class="row">
+				<span class="name"><a class="file" href="0!_claude_opus48t.html">0!_claude_opus48t.html</a></span>
+				<span class="tag best">Clean velocity-swap model</span>
+				<span class="tag ok">Tile render</span>
+			</div>
+			<div class="desc">Equal-mass velocity-swap on the inner X and Y walls with sub-stepping and 3×3 ghost-tile rendering. The swap is exact and conserves Σp and ΣKE on paper.</div>
+			<ul class="issues">
+				<li><b>Re-seating across the seam</b>: after a contact near the 1024 boundary, the ball is repositioned at <em>wrap(square.x ± LIMIT)</em>, which can place it in a different toroidal copy than the one drawn for the square → visible teleports.</li>
+				<li>No tunneling guard: a single sub-step travel larger than the hole-wall thickness lets the ball slip past the wall with no test firing.</li>
+				<li>Kick button only nudges the ball — Σp is not preserved when the ball was at rest, contradicting the stated conservation law.</li>
+			</ul>
+		</div>
+
+		<div class="card warn">
+			<div class="row">
+				<span class="name"><a class="file" href="0_step37f.html">0_step37f.html</a></span>
+				<span class="tag warn">Works, but specialised</span>
+			</div>
+			<div class="desc">Four AABB wall rects built from the frame minus the hole, with a 3×3 toroidal tile search. Positional correction is split by inverse mass.</div>
+			<ul class="issues">
+				<li>Velocity impulse uses <em>j = −dv·n</em> with no <em>(1+e)</em> factor and no inverse-mass denominator — only correct for the hard-coded equal-mass case.</li>
+				<li>Renders a single square, no ghost tiles, so the ball appears to teleport on wrap.</li>
+				<li>4 walls × 9 tiles = 36 collision tests per frame; trivially optimisable.</li>
+			</ul>
+		</div>
+
+		<div class="card warn">
+			<div class="row">
+				<span class="name"><a class="file" href="0_qwen36ct.html">0_qwen36ct.html</a></span>
+				<span class="tag warn">Trail effect, fragile wrap test</span>
+			</div>
+			<div class="desc">Per-edge checkWall with wrap-aware range test, plus a fading ball trail. Visually nice.</div>
+			<ul class="issues">
+				<li>Wrap shift uses <em>Math.round((wallCoord − ballPos) / size)</em> — a wall more than half a tile away is snapped to the wrong tile, so contacts on the seam can be missed silently.</li>
+				<li>Velocity swap is one-axis-at-a-time, but the X- and Y-pass repositions the ball with <em>wrap()</em> after the first swap, so the second pass uses an inconsistent state — a small order-of-operations bug.</li>
+			</ul>
+		</div>
+
+		<div class="card bug">
+			<div class="row">
+				<span class="name"><a class="file" href="0_laguna21.html">0_laguna21.html</a></span>
+				<span class="tag bug">No wrap, wrong contact</span>
+			</div>
+			<div class="desc">Inner walls as four normals; square reflects off hard field edges.</div>
+			<ul class="issues">
+				<li>Field is not wrapped (the brief asks for an XY torus) — the square reflects off field edges, which is an external impulse and breaks the closed-system conservation claim.</li>
+				<li>Only the inner edges are tested; if the ball ever sits between the frame and the field wall it can pass straight through the outer face.</li>
+				<li>Field-wall bounce is not split by mass: the ball is reflected with <em>−v</em> regardless of the square's motion.</li>
+			</ul>
+		</div>
+
+		<div class="card bug">
+			<div class="row">
+				<span class="name"><a class="file" href="0_qwen36t diz.html">0_qwen36t diz.html</a></span>
+				<span class="tag bug">No two-body coupling</span>
+			</div>
+			<div class="desc">Simplest implementation: a 1D bounce in the hole-relative frame, with a wrap.</div>
+			<ul class="issues">
+				<li>Ball is reflected with <em>−v</em> and the square is never updated, so Σp and ΣKE are not conserved.</li>
+				<li>Square is decorative — it has <em>vx, vy</em> in state but they are not used in physics.</li>
+			</ul>
+		</div>
+
+		<div class="card bug">
+			<div class="row">
+				<span class="name"><a class="file" href="0_step37f_bug_ball_escape.html">0_step37f_bug_ball_escape.html</a></span>
+				<span class="tag bug">Ball can escape (named for the bug)</span>
+			</div>
+			<div class="desc">Eight wall passes against 1×1 slabs at the inner and outer edges.</div>
+			<ul class="issues">
+				<li>1×1 slabs make <em>closestPoint</em> return the corner of the slab, so the "distance to wall" is a diagonal — the ball triggers a collision up to <em>√2 · R</em> away and is pushed along the wrong normal near corners. The ball escapes through the diagonal.</li>
+				<li>Field-wall bounce uses <em>Math.abs(v)</em>, which adds kinetic energy on every reflection.</li>
+				<li>Update is driven by <em>DT = 1/120</em> with no <em>requestAnimationFrame</em> time delta — the simulation speed depends on the display refresh rate.</li>
+			</ul>
+		</div>
+
+		<h2>Round 1 — brief extended with optional rotation</h2>
+		<p class="desc">Now the square should support free rotation about its centre, with the analytic moment of inertia for a frame with a square hole. A toggle locks rotation while leaving translation free.</p>
+
+		<div class="card best">
+			<div class="row">
+				<span class="name"><a class="file" href="0-GPT56luna.html">0-GPT56luna.html</a></span>
+				<span class="tag best">Clean rigid body</span>
+				<span class="tag ok">Wrap-aware</span>
+				<span class="tag ok">Rotation</span>
+			</div>
+			<div class="desc">Impulse-based collision with analytic frame inertia, free-rotation toggle, fixed sub-step accumulator, and wrap-aware 9-copy rendering. Matches the quality of <em>01_hy3.html</em> in fewer lines.</div>
+			<ul class="issues">
+				<li>No conservation HUD — Σp / ΣKE drift is invisible.</li>
+				<li>No <em>|v|</em> cap or outer-wall guard (common to the set).</li>
+			</ul>
+		</div>
+
+		<div class="card warn">
+			<div class="row">
+				<span class="name"><a class="file" href="0-dots3.html">0-dots3.html</a></span>
+				<span class="tag warn">Compact, with rotation</span>
+			</div>
+			<div class="desc">Compact implementation with adaptive sub-stepping, 9-copy tiling, and a rotation toggle. Initially contained two bugs: a sign error in the collision physics and a malformed layout that blocks checkbox.</div>
+			<ul class="issues">
+				<li><b>Sign bug in physics</b> — the relative-velocity / normal sign check in the collision response is inverted for some contact configurations, causing missed bounces.</li>
+				<li><b>Layout-blocking HTML bug</b> — the canvas closing tag is malformed (<code>&lt;/div&gt;</code> instead of <code>&lt;/canvas&gt;</code>), which breaks the layout and can prevent the checkbox from working.</li>
+			</ul>
+		</div>
+
+		<div class="card note">
+			<div class="row">
+				<span class="name"><a class="file" href="01_hy3.html">01_hy3.html</a></span>
+				<span class="tag note">Notable — full rigid body</span>
+				<span class="tag ok">Angular-momentum invariant</span>
+			</div>
+			<div class="desc">The only implementation that actually carries angular momentum: analytic moment of inertia for the frame with hole, impulse split between linear and rotational degrees of freedom, diagnostics for linear and angular Σ.</div>
+			<ul class="issues">
+				<li>The frame's <em>I</em> is large (≈ 4167 for the default sizes) so the square barely spins after a hit. Not a bug, but the rotational effect is hard to see without an explicit "spin the frame" control.</li>
+				<li>Wrap is implemented as "snap object, shift ball by the same delta" — correct, but easy to break in a future edit.</li>
+				<li>Single ghost-tile render is fine for a square, but the trail points are drawn in all 9 tiles individually, which is slow.</li>
+			</ul>
+		</div>
+
+		<div class="card warn">
+			<div class="row">
+				<span class="name"><a class="file" href="01_qwen38_27b_hermes.html">01_qwen38_27b_hermes.html</a></span>
+				<span class="tag warn">Rotation toggle present</span>
+			</div>
+			<div class="desc">Compact, well-commented. The rotation checkbox toggles free rotation with moment of inertia.</div>
+			<ul class="issues">
+				<li>No conservation HUD — drift in Σp / ΣKE is not visible, so the rotation coupling is hard to verify visually.</li>
+				<li>Single copy render.</li>
+			</ul>
+		</div>
+
+		<div class="card warn">
+			<div class="row">
+				<span class="name"><a class="file" href="01_qwen38_27b_i4.htm">01_qwen38_27b_i4.htm</a></span>
+				<span class="tag warn">Largest of the round</span>
+			</div>
+			<div class="desc">A long single-file attempt with rotation support and an HTML/CSS UI. Useful as a baseline to compare line counts against.</div>
+			<ul class="issues">
+				<li>No conservation diagnostics in the HUD.</li>
+				<li>Filename ends in <em>.htm</em> — some static servers will still serve it, but the broken extension is a smell.</li>
+			</ul>
+		</div>
+
+		<div class="card warn">
+			<div class="row">
+				<span class="name"><a class="file" href="01_ornith1.html">01_ornith1.html</a></span>
+				<span class="tag warn">Multiple balls</span>
+			</div>
+			<div class="desc">Variation that runs more than one ball inside the same hole — collision-against-other-balls logic is added on top of the wall collision.</div>
+			<ul class="issues">
+				<li>Without seeing the full file, multi-ball inter-collision is the most likely place to leak energy; worth checking the impulse split between equal-mass balls.</li>
+			</ul>
+		</div>
+
+		<div class="card note">
+			<div class="row">
+				<span class="name"><a class="file" href="01!_glm52m_grok45_rot.html">01!_glm52m_grok45_rot.html</a></span>
+				<span class="tag note">Notable — extended HUD</span>
+				<span class="tag ok">Tailwind UI</span>
+			</div>
+			<div class="desc">A more elaborate cousin of <em>0!_glm52max.html</em>: same impulse core but with the rotation toggle added, a side panel, time-scale slider, and a full live readout (ball/square speed and components, Σp now/init, ΣKE now/init, COM-drift speed, FPS).</div>
+			<ul class="issues">
+				<li>Pulls Tailwind from a CDN, so it needs network to render the panel styling.</li>
+				<li>Same caveat as 0!_glm52max.html: no outer-wall guard and no <em>|v|</em> cap.</li>
+			</ul>
+		</div>
+
+		<div class="card note">
+			<div class="row">
+				<span class="name"><a class="file" href="01!_claude48ot_c46_rot.html">01!_claude48ot_c46_rot.html</a></span>
+				<span class="tag note">Notable — careful seam handling</span>
+			</div>
+			<div class="desc">A near-twin of <em>0!_co48t.html</em> extended with rotation. Clean visual style and explicit tile-relative rendering.</div>
+			<ul class="issues">
+				<li>Inherits the same seam re-seating subtlety as 0!_co48t.html — needs the same fix if the brief is ever revisited.</li>
+			</ul>
+		</div>
+
+		<h2>Round 2 — synthesised "best of" + extra features</h2>
+		<p class="desc">Later passes that combine ideas from earlier implementations and add presentation features.</p>
+
+		<div class="card best">
+			<div class="row">
+				<span class="name"><a class="file" href="02_hy3+synth.html">02_hy3+synth.html</a></span>
+				<span class="tag best">Most complete</span>
+				<span class="tag ok">Rotation</span>
+				<span class="tag ok">HUD</span>
+				<span class="tag ok">Tile render</span>
+			</div>
+			<div class="desc">Combines the rigid-body rotation of <em>01_hy3.html</em> with the wrap-aware impulse core and the conservation diagnostics of the GLM 0/1 entries. Closest to a reference implementation in this set.</div>
+			<ul class="issues">
+				<li>Longest file in the comparison — the duplication between impulse, wrap, and HUD code invites copy-paste drift.</li>
+				<li>Same outer-wall / |v| caveats as the other impulse-based entries.</li>
+			</ul>
+		</div>
+
+		<div class="card best">
+			<div class="row">
+				<span class="name"><a class="file" href="02_hy3+synth21.html">02_hy3+synth21.html</a></span>
+				<span class="tag best">Reference variant</span>
+			</div>
+			<div class="desc">Sibling of 02_hy3+synth.html with minor variations — useful to see what small refactors change about the simulation behaviour.</div>
+		</div>
+
+		<div class="card best">
+			<div class="row">
+				<span class="name"><a class="file" href="02_hy3+synth22.html">02_hy3+synth22.html</a></span>
+				<span class="tag best">Reference variant</span>
+			</div>
+			<div class="desc">Another sibling of 02_hy3+synth.html. Same engine, different cosmetic / UI choices.</div>
+		</div>
+
+		<div class="card note">
+			<div class="row">
+				<span class="name"><a class="file" href="02_qwen38_27b_ornith1_hermes.html">02_qwen38_27b_ornith1_hermes.html</a></span>
+				<span class="tag note">Notable — adds sound</span>
+				<span class="tag ok">Multiple synth modes</span>
+			</div>
+			<div class="desc">A late-stage attempt that adds an audio synthesiser: a different tone is generated for each bounce, with selectable mapping (mean of pre/post speeds, constant pitch, speed-proportional, or only-on-bounce).</div>
+			<ul class="issues">
+				<li>Audio requires a user gesture on most browsers; the sound checkbox alone is not enough to start the AudioContext.</li>
+				<li>Adds another invariant to verify: the chosen pitch mapping should be reproducible from the post-collision velocity alone.</li>
+			</ul>
+		</div>
+
+		<h2>Common issues across the set</h2>
+		<ul class="issues">
+			<li><b>No <em>|v|</em> cap.</b> Every file can be kicked past a speed that moves the ball more than its own radius in a single sub-step — a tunneling risk for any future higher-resolution test.</li>
+			<li><b>No outer-wall guard.</b> Impulse-based cores test only the four inner edges. If a refactor ever lets the ball enter the frame body, none of them will push it back out.</li>
+			<li><b>Conservation diagnostics are inconsistent.</b> Only the GLM-family entries show Σp and ΣKE against an initial value; everywhere else you have to take the implementation on trust.</li>
+			<li><b>Wrap is re-implemented each time.</b> Each file rolls its own <em>wrap</em> / <em>delta</em> / tile-render helper. A shared utility would eliminate the "Math.round vs floor" / "teleport on seam" classes of bug.</li>
+			<li><b>No DPR / HiDPI scaling.</b> All canvases are 1024×1024; on a 4K display the result is upscaled and soft. <em>01_hy3.html</em> uses <em>image-rendering: pixelated</em> as a partial workaround.</li>
+		</ul>
+
+		<h2>If you only open three</h2>
+		<div class="card best">
+			<ul class="issues">
+				<li><a class="file" href="0!_glm52max.html">0!_glm52max.html</a> — best impulse-based, no rotation, with full conservation HUD.</li>
+				<li><a class="file" href="01_hy3.html">01_hy3.html</a> — best angular-momentum implementation, with rotation.</li>
+				<li><a class="file" href="02_hy3+synth.html">02_hy3+synth.html</a> — best combined "everything" version (rotation + HUD + wrap).</li>
+			</ul>
+		</div>
+
+		<p class="footer">Comparison index · LLM self-evaluation pass · no implementation files were modified.</p>
+	</div>
+</body>
+</html>

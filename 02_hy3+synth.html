@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Toroidal Frame + Ball</title>
+<style>
+	body {
+		margin: 0;
+		background: #0d1117;
+		color: #c9d1d9;
+		font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 10px;
+		padding: 12px;
+	}
+	canvas {
+		background: #06090f;
+		border: 1px solid #21303f;
+		image-rendering: pixelated;
+		max-width: 96vw;
+		height: auto;
+	}
+	.panel {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 14px;
+		align-items: center;
+		justify-content: center;
+		max-width: 1024px;
+	}
+	.panel label { display: inline-flex; align-items: center; gap: 6px; }
+	button {
+		background: #21303f;
+		color: #c9d1d9;
+		border: 1px solid #2f4459;
+		padding: 5px 10px;
+		cursor: pointer;
+		font: inherit;
+	}
+	button:hover { background: #2a3c4f; }
+	.readout {
+		display: grid;
+		grid-template-columns: repeat(2, auto);
+		gap: 2px 18px;
+		white-space: pre;
+		background: #0a0f16;
+		border: 1px solid #21303f;
+		padding: 8px 12px;
+	}
+	.readout b { color: #58a6ff; font-weight: 600; }
+	.hint { opacity: 0.7; font-size: 12px; }
+	fieldset { border: 1px solid #21303f; padding: 4px 10px; margin: 0; display: inline-flex; gap: 10px; }
+	fieldset legend { font-size: 11px; color: #58a6ff; padding: 0 4px; }
+	fieldset label { gap: 4px; }
+</style>
+</head>
+<body>
+<canvas id="cv" width="1024" height="1024"></canvas>
+<div class="panel">
+	<label><input type="checkbox" id="rot" checked> rotation</label>
+	<button id="reset">reset</button>
+	<button id="kick">kick ball</button>
+	<span class="hint">click canvas to kick ball toward cursor</span>
+</div>
+<div class="panel">
+	<button id="sound">sound: off</button>
+	<fieldset>
+		<legend>volume</legend>
+		<label><input type="radio" name="vol" value="const"> constant</label>
+		<label><input type="radio" name="vol" value="dx"> dx → vol</label>
+		<label><input type="radio" name="vol" value="dist" checked> dist(0,2) → vol</label>
+	</fieldset>
+	<fieldset>
+		<legend>tone</legend>
+		<label><input type="radio" name="tone" value="dy" checked> dy → tone</label>
+		<label><input type="radio" name="tone" value="y"> y → tone</label>
+	</fieldset>
+	<fieldset>
+		<legend>phase</legend>
+		<label><input type="radio" name="phase" value="same" checked> same (no effect)</label>
+		<label><input type="radio" name="phase" value="dist"> dist(0,2) → phase</label>
+	</fieldset>
+</div>
+<div class="readout" id="ro"></div>
+
+<script>
+	const FIELD = 1024;
+	const OUTER = 200, HOLE = 100, WALL = 50, R = 5;
+	const M_OBJ = 1, M_BALL = 1;
+	const E = 1;
+
+	// moment of inertia of a uniform square frame (outer minus hole) about its centre
+	const AREA = OUTER * OUTER - HOLE * HOLE;
+	const I_FRAME =
+		(1 / AREA) *
+		((1 / 12) * Math.pow(OUTER, 4) - (1 / 12) * Math.pow(HOLE, 4));
+	const invMassObj = 1 / M_OBJ;
+	const invMassBall = 1 / M_BALL;
+	const invI = 1 / I_FRAME;
+
+	let rotationEnabled = true;
+
+	// --- state ---
+	const obj = { cx: 0, cy: 0, vx: 0, vy: 0, angle: 0, omega: 0 };
+	const ball = { bx: 0, by: 0, bvx: 0, bvy: 0 };
+
+	function reset() {
+		obj.cx = FIELD / 2;
+		obj.cy = FIELD / 2;
+		obj.vx = 40;
+		obj.vy = 25;
+		obj.angle = 0;
+		obj.omega = rotationEnabled ? 0.8 : 0;
+		ball.bx = obj.cx;
+		ball.by = obj.cy;
+		ball.bvx = 260;
+		ball.bvy = -190;
+		trail.length = 0;
+	}
+
+	// --- collision: ball vs one inner wall, given in object-local frame ---
+	// nl: inward normal (local), cl: contact point on wall (local), pen: penetration depth (>0)
+	function collide(nlx, nly, clx, cly, pen) {
+		const c = Math.cos(obj.angle), s = Math.sin(obj.angle);
+
+		// local normal -> world
+		const nx = nlx * c - nly * s;
+		const ny = nlx * s + nly * c;
+
+		// contact point relative to object centre -> world
+		const rcx = clx * c - cly * s;
+		const rcy = clx * s + cly * c;
+
+		// velocity of that material point on the rigid object
+		const cvx = obj.vx - obj.omega * rcy;
+		const cvy = obj.vy + obj.omega * rcx;
+
+		const rvx = ball.bvx - cvx;
+		const rvy = ball.bvy - cvy;
+		const vn = rvx * nx + rvy * ny;
+
+		// positional correction (push ball back into the hole)
+		if (pen > 0) {
+			ball.bx += pen * nx;
+			ball.by += pen * ny;
+		}
+
+		// impulse (only if approaching)
+		if (vn < 0) {
+			const cross = rcx * ny - rcy * nx;
+			const invRot = rotationEnabled ? invI : 0;
+			const denom = invMassBall + invMassObj + cross * cross * invRot;
+			const j = -(1 + E) * vn / denom;
+
+			const ix = j * nx, iy = j * ny;
+			ball.bvx += ix * invMassBall;
+			ball.bvy += iy * invMassBall;
+			obj.vx -= ix * invMassObj;
+			obj.vy -= iy * invMassObj;
+			if (rotationEnabled) {
+				obj.omega += -cross * j * invI;
+			}
+		}
+	}
+
+	function step(dt) {
+		const SUB = 16;
+		const h = dt / SUB;
+
+		for (let i = 0; i < SUB; i++) {
+			// integrate
+			obj.cx += obj.vx * h;
+			obj.cy += obj.vy * h;
+			if (rotationEnabled) obj.angle += obj.omega * h;
+			ball.bx += ball.bvx * h;
+			ball.by += ball.bvy * h;
+
+			// toroidal wrap (object + ball shifted by the same delta => hole stays intact)
+			wrap();
+
+			// ball -> object-local frame
+			const c = Math.cos(obj.angle), s = Math.sin(obj.angle);
+			const dx = ball.bx - obj.cx;
+			const dy = ball.by - obj.cy;
+			const lx = dx * c + dy * s;
+			const ly = -dx * s + dy * c;
+
+			const half = HOLE / 2; // 50
+
+			// x walls (left / right inner edges)
+			if (lx + R > half) {
+				collide(-1, 0, half, ly, (lx + R) - half);
+			} else if (lx - R < -half) {
+				collide(1, 0, -half, ly, (-half) - (lx - R));
+			}
+			// y walls (bottom / top inner edges) -- recompute local after x-correction
+			const dx2 = ball.bx - obj.cx;
+			const dy2 = ball.by - obj.cy;
+			const lx2 = dx2 * c + dy2 * s;
+			const ly2 = -dx2 * s + dy2 * c;
+			if (ly2 + R > half) {
+				collide(0, -1, lx2, half, (ly2 + R) - half);
+			} else if (ly2 - R < -half) {
+				collide(0, 1, lx2, -half, (-half) - (ly2 - R));
+			}
+		}
+	}
+
+	function wrap() {
+		let ncx = ((obj.cx % FIELD) + FIELD) % FIELD;
+		const ddx = ncx - obj.cx;
+		obj.cx = ncx;
+		ball.bx += ddx;
+
+		let ncy = ((obj.cy % FIELD) + FIELD) % FIELD;
+		const ddy = ncy - obj.cy;
+		obj.cy = ncy;
+		ball.by += ddy;
+	}
+
+	// --- diagnostics (should stay constant: closed, perfectly elastic system) ---
+	function metrics() {
+		const ke =
+			0.5 * M_BALL * (ball.bvx * ball.bvx + ball.bvy * ball.bvy) +
+			0.5 * M_OBJ * (obj.vx * obj.vx + obj.vy * obj.vy) +
+			(rotationEnabled ? 0.5 * I_FRAME * obj.omega * obj.omega : 0);
+
+		const px = M_BALL * ball.bvx + M_OBJ * obj.vx;
+		const py = M_BALL * ball.bvy + M_OBJ * obj.vy;
+
+		const cmx = (M_OBJ * obj.cx + M_BALL * ball.bx) / (M_OBJ + M_BALL);
+		const cmy = (M_OBJ * obj.cy + M_BALL * ball.by) / (M_OBJ + M_BALL);
+		let L =
+			M_OBJ * ((obj.cx - cmx) * obj.vy - (obj.cy - cmy) * obj.vx) +
+			M_BALL * ((ball.bx - cmx) * ball.bvy - (ball.by - cmy) * ball.bvx);
+		if (rotationEnabled) L += I_FRAME * obj.omega;
+
+		return { ke, px, py, L };
+	}
+
+	// --- rendering ---
+	const cv = document.getElementById("cv");
+	const ctx = cv.getContext("2d");
+	const trail = [];
+
+	function drawGhost(drawFn) {
+		for (let gx = -1; gx <= 1; gx++) {
+			for (let gy = -1; gy <= 1; gy++) {
+				ctx.save();
+				ctx.translate(gx * FIELD, gy * FIELD);
+				drawFn();
+				ctx.restore();
+			}
+		}
+	}
+
+	function drawFrame() {
+		ctx.save();
+		ctx.translate(obj.cx, obj.cy);
+		ctx.rotate(obj.angle);
+		ctx.beginPath();
+		ctx.rect(-OUTER / 2, -OUTER / 2, OUTER, OUTER);
+		ctx.rect(-HOLE / 2, -HOLE / 2, HOLE, HOLE);
+		ctx.fillStyle = "#1f6feb";
+		ctx.fill("evenodd");
+		ctx.lineWidth = 2;
+		ctx.strokeStyle = "#58a6ff";
+		ctx.strokeRect(-HOLE / 2, -HOLE / 2, HOLE, HOLE);
+		// sound source markers: hole corners 0 and 2 (opposite)
+		ctx.fillStyle = "#f85149";
+		ctx.beginPath(); ctx.arc(50, 50, 4, 0, Math.PI * 2); ctx.fill();
+		ctx.beginPath(); ctx.arc(-50, -50, 4, 0, Math.PI * 2); ctx.fill();
+		ctx.restore();
+	}
+
+	function drawBall() {
+		ctx.save();
+		ctx.translate(ball.bx, ball.by);
+		ctx.beginPath();
+		ctx.arc(0, 0, R, 0, Math.PI * 2);
+		ctx.fillStyle = "#f0883e";
+		ctx.fill();
+		ctx.restore();
+	}
+
+	function render() {
+		ctx.clearRect(0, 0, FIELD, FIELD);
+
+		// field border (torus wrap indication)
+		ctx.strokeStyle = "#16202c";
+		ctx.strokeRect(0.5, 0.5, FIELD - 1, FIELD - 1);
+		for (let i = 1; i < 8; i++) {
+			ctx.beginPath();
+			ctx.moveTo((i * FIELD) / 8, 0);
+			ctx.lineTo((i * FIELD) / 8, FIELD);
+			ctx.moveTo(0, (i * FIELD) / 8);
+			ctx.lineTo(FIELD, (i * FIELD) / 8);
+			ctx.stroke();
+		}
+
+		drawGhost(drawFrame);
+
+		// trail
+		for (let i = 0; i < trail.length; i++) {
+			const t = trail[i];
+			ctx.globalAlpha = (i / trail.length) * 0.5;
+			drawGhost(() => {
+				ctx.save();
+				ctx.translate(t.bx, t.by);
+				ctx.beginPath();
+				ctx.arc(0, 0, R * 0.7, 0, Math.PI * 2);
+				ctx.fillStyle = "#f0883e";
+				ctx.fill();
+				ctx.restore();
+			});
+		}
+		ctx.globalAlpha = 1;
+
+		drawGhost(drawBall);
+	}
+
+	const ro = document.getElementById("ro");
+	function updateReadout() {
+		const m = metrics();
+		ro.innerHTML =
+			"<b>KE</b>        " + m.ke.toFixed(2) + "\n" +
+			"<b>p (lin)</b>   " + m.px.toFixed(2) + " , " + m.py.toFixed(2) + "\n" +
+			"<b>L (ang)</b>   " + m.L.toFixed(2) + "\n" +
+			"<b>ball v</b>    " + Math.hypot(ball.bvx, ball.bvy).toFixed(1) + "\n" +
+			"<b>obj  v</b>    " + Math.hypot(obj.vx, obj.vy).toFixed(1) +
+			(rotationEnabled ? "   ω " + obj.omega.toFixed(3) : "   (locked)");
+	}
+
+	// --- sound synthesis ---
+	// corners 0 and 2 of the big square are sound sources, the ball is the listener
+	let audioCtx = null, audioOn = false;
+	let osc0, osc2, gain0, gain2, delay0, delay2, panner0, panner2, masterGain;
+	const SOUND_C = 4000;
+
+	function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+	// distance range the ball can actually reach from a hole corner (~7..135 px)
+	const D_MIN = 7, D_MAX = 135;
+	// map distance to a channel level with real dynamic range so L/R differ -> audible pan
+	function volFromDist(d) {
+		const norm = clamp((d - D_MIN) / (D_MAX - D_MIN), 0, 1);
+		return 0.02 + (1 - norm) * 0.16;
+	}
+
+	// world position of big-square corner i (0..3), rotated by object angle
+	function cornerWorld(i) {
+		const L = [[50, 50], [-50, 50], [-50, -50], [50, -50]];
+		const lx = L[i][0], ly = L[i][1];
+		const c = Math.cos(obj.angle), s = Math.sin(obj.angle);
+		return { x: obj.cx + lx * c - ly * s, y: obj.cy + lx * s + ly * c };
+	}
+
+	function initAudio() {
+		audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+		masterGain = audioCtx.createGain();
+		masterGain.gain.value = 0.6;
+		masterGain.connect(audioCtx.destination);
+		osc0 = audioCtx.createOscillator(); osc0.type = "triangle";
+		osc2 = audioCtx.createOscillator(); osc2.type = "triangle";
+		gain0 = audioCtx.createGain(); gain2 = audioCtx.createGain();
+		delay0 = audioCtx.createDelay(1.0); delay2 = audioCtx.createDelay(1.0);
+		panner0 = audioCtx.createStereoPanner(); panner2 = audioCtx.createStereoPanner();
+		osc0.connect(gain0); gain0.connect(delay0); delay0.connect(panner0); panner0.connect(masterGain);
+		osc2.connect(gain2); gain2.connect(delay2); delay2.connect(panner2); panner2.connect(masterGain);
+		osc0.frequency.value = 300; osc2.frequency.value = 300;
+		osc0.start(); osc2.start();
+	}
+
+	function updateAudio() {
+		if (!audioOn || !audioCtx) return;
+		const k0 = cornerWorld(0), k2 = cornerWorld(2);
+		const d0 = Math.hypot(ball.bx - k0.x, ball.by - k0.y);
+		const d2 = Math.hypot(ball.bx - k2.x, ball.by - k2.y);
+
+		const volMode = document.querySelector('input[name=vol]:checked').value;
+		const toneMode = document.querySelector('input[name=tone]:checked').value;
+		const phaseMode = document.querySelector('input[name=phase]:checked').value;
+
+		// volume
+		let g0, g2;
+		if (volMode === "const") { g0 = g2 = 0.12; }
+		else if (volMode === "dx") {
+			const dxm = (Math.abs(ball.bx - k0.x) + Math.abs(ball.bx - k2.x)) / 2;
+			g0 = g2 = volFromDist(dxm + 60);
+		} else { g0 = volFromDist(d0); g2 = volFromDist(d2); }
+
+		// tone (frequency)
+		let f;
+		if (toneMode === "dy") f = 120 + ((ball.by - obj.cy + 50) / 100) * 600;
+		else f = 120 + (ball.by / FIELD) * 600;
+		f = clamp(f, 60, 1200);
+
+		// phase: delay models wave travel time (distance / speed of sound)
+		let dl0, dl2;
+		if (phaseMode === "same") { dl0 = dl2 = 0; }
+		else { dl0 = d0 / SOUND_C; dl2 = d2 / SOUND_C; }
+
+		const t = audioCtx.currentTime;
+		osc0.frequency.setTargetAtTime(f, t, 0.02);
+		osc2.frequency.setTargetAtTime(f, t, 0.02);
+		gain0.gain.setTargetAtTime(g0, t, 0.02);
+		gain2.gain.setTargetAtTime(g2, t, 0.02);
+		delay0.delayTime.setTargetAtTime(dl0, t, 0.02);
+		delay2.delayTime.setTargetAtTime(dl2, t, 0.02);
+		// stereo only in dist(0,2) volume mode: corner 0 = left, corner 2 = right
+		const pan = (volMode === "dist") ? 1 : 0;
+		panner0.pan.setTargetAtTime(-pan, t, 0.02);
+		panner2.pan.setTargetAtTime(pan, t, 0.02);
+	}
+
+	// --- main loop ---
+	let last = performance.now();
+	function loop(now) {
+		let dt = (now - last) / 1000;
+		last = now;
+		if (dt > 1 / 30) dt = 1 / 30; // clamp to avoid spiral after tab switch
+		step(dt);
+		updateAudio();
+
+		trail.push({ bx: ball.bx, by: ball.by });
+		if (trail.length > 40) trail.shift();
+
+		render();
+		updateReadout();
+		requestAnimationFrame(loop);
+	}
+
+	// --- controls ---
+	document.getElementById("rot").addEventListener("change", (e) => {
+		rotationEnabled = e.target.checked;
+		if (!rotationEnabled) obj.omega = 0;
+	});
+	document.getElementById("reset").addEventListener("click", reset);
+	document.getElementById("sound").addEventListener("click", () => {
+		if (!audioCtx) initAudio();
+		if (audioCtx.state === "suspended") audioCtx.resume();
+		audioOn = !audioOn;
+		document.getElementById("sound").textContent = audioOn ? "sound: on" : "sound: off";
+		masterGain.gain.setTargetAtTime(audioOn ? 0.6 : 0, audioCtx.currentTime, 0.02);
+	});
+	document.getElementById("kick").addEventListener("click", () => {
+		const a = Math.random() * Math.PI * 2;
+		ball.bvx = Math.cos(a) * 600;
+		ball.bvy = Math.sin(a) * 600;
+	});
+	cv.addEventListener("mousedown", (e) => {
+		const rect = cv.getBoundingClientRect();
+		const mx = ((e.clientX - rect.left) / rect.width) * FIELD;
+		const my = ((e.clientY - rect.top) / rect.height) * FIELD;
+		let dx = mx - ball.bx, dy = my - ball.by;
+		const d = Math.hypot(dx, dy) || 1;
+		ball.bvx = (dx / d) * 600;
+		ball.bvy = (dy / d) * 600;
+	});
+
+	reset();
+	requestAnimationFrame(loop);
+</script>
+</body>
+</html>

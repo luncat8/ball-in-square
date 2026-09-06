@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Rotating Square w/ Hole — Elastic Ball (xy-wrap)</title>
+<style>
+  body { margin:0; background:#10131a; color:#cdd3e0; font-family:monospace; }
+  .wrap { display:flex; gap:16px; align-items:flex-start; padding:16px; flex-wrap:wrap; }
+  canvas { background:#0b0e14; border:1px solid #2a2f3a; display:block; }
+  .panel { min-width:260px; }
+  label, button { font-size:14px; }
+  button { padding:6px 10px; cursor:pointer; background:#223; color:#cdd3e0; border:1px solid #446; }
+  .info { font-size:12px; line-height:1.7; color:#8b93a7; margin-top:12px; }
+  code { color:#7ee0c0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <canvas id="c" width="1024" height="1024"></canvas>
+  <div class="panel">
+    <h2>Controls</h2>
+    <label><input type="checkbox" id="rot"> Allow square rotation (free)</label>
+    <button id="reset">Restart ball</button>
+    <div class="info">
+      Field: 1024×1024 xy-wrap<br>
+      Square: 200×200, hole 100×100 (50px walls)<br>
+      Ball: Ø10 · mass 1 · square mass 1<br>
+      I = M(Lₒ²+Lᵢ²)/12 = <code id="Ival">—</code><br>
+      KE total = <code id="ke">—</code> (should stay constant)<br>
+      Elastic · no friction · no loss<br>
+      Ball reflects off inner hole edges only.
+    </div>
+  </div>
+</div>
+<script>
+"use strict";
+
+/* ---------- constants ---------- */
+const FIELD     = 1024;          // toroidal field (x and y wrap)
+const OUTER_HALF = 100;          // outer half-size -> side 200
+const INNER_HALF = 50;           // hole half-size  -> side 100, walls 50px
+const WALL_THICK= OUTER_HALF - INNER_HALF;             // 50
+const BALL_R    = 5;             // ball radius (Ø10)
+const MASS_SQ   = 1;
+const MASS_BALL = 1;
+
+/* Analytic moment of inertia of a square frame (outer minus inner hole):
+     I = sigma/12 * (L_o^4 - L_i^4),  sigma = M/(L_o^2 - L_i^2)
+     => I = M*(L_o^2 + L_i^2)/12                                */
+const OUTER_SIDE = OUTER_HALF*2;   // 200
+const INNER_SIDE = INNER_HALF*2;   // 100
+const I_SQ = MASS_SQ * (OUTER_SIDE*OUTER_SIDE + INNER_SIDE*INNER_SIDE) / 12;
+
+/* ball-center constraint half-size inside the hole (hole minus ball radius) */
+const C = INNER_HALF - BALL_R;     // 45
+
+document.getElementById('Ival').textContent = I_SQ.toFixed(3);
+
+/* ---------- state ---------- */
+const S   = { cx:512, cy:512, vx:0, vy:0, angle:0, omega:0, locked:true };
+const ball= { x:512, y:512, vx:180, vy:120 };
+
+/* ---------- helpers ---------- */
+function rot(vx, vy, a){ const c=Math.cos(a), s=Math.sin(a); return [vx*c-vy*s, vx*s+vy*c]; }
+function wrap(x){ return ((x % FIELD) + FIELD) % FIELD; }
+
+/* ---------- physics ---------- */
+/* One elastic (e=1) impulse against a single inner hole wall.
+   sign = +/-1 of the penetrated side; axis = 'x'|'y'.            */
+function applyWall(sign, axis, lx, ly){
+  const nLocal = axis==='x' ? [-sign,0] : [0,-sign];              // inward normal (into hole)
+  const nWorld = rot(nLocal, S.angle);
+  const cLocal = axis==='x' ? [ sign*INNER_HALF, ly ] : [ lx, sign*INNER_HALF ]; // contact on hole face
+  const rWorld = rot(cLocal, S.angle);                            // cm -> contact point
+  const cross  = rWorld[0]*nWorld[1] - rWorld[1]*nWorld[0];        // (r x n)_z
+  const vq = [ S.vx - S.omega*rWorld[1], S.vy + S.omega*rWorld[0] ];// body-point velocity at contact
+  const vr = [ ball.vx - vq[0], ball.vy - vq[1] ];                // relative velocity
+  const vn = vr[0]*nWorld[0] + vr[1]*nWorld[1];                   // normal component (approach < 0)
+  if(vn < 0){                                                    // only when approaching
+    const invB = 1/MASS_BALL, invS = 1/MASS_SQ;
+    const rotTerm = S.locked ? 0 : cross*cross/I_SQ;              // locked => infinite rotational inertia
+    const j = -2*vn / (invB + invS + rotTerm);                    // elastic impulse (conserves p & KE)
+    ball.vx += j*invB*nWorld[0];
+    ball.vy += j*invB*nWorld[1];
+    S.vx   -= j*invS*nWorld[0];
+    S.vy   -= j*invS*nWorld[1];
+    if(!S.locked) S.omega -= (j/I_SQ)*cross;                      // angular impulse about cm
+  }
+}
+
+function step(dt){
+  /* integrate square: translation always free, rotation only when unlocked */
+  S.cx += S.vx*dt;  S.cy += S.vy*dt;
+  if(!S.locked) S.angle += S.omega*dt;
+  S.cx = wrap(S.cx); S.cy = wrap(S.cy);
+
+  /* integrate ball (raw position may leave [0,FIELD]) */
+  let bx = ball.x + ball.vx*dt;
+  let by = ball.y + ball.vy*dt;
+
+  /* reduce (ball - square) into principal band -> use nearest wrapped copy (xy-wrap fix) */
+  let dx = bx - S.cx, dy = by - S.cy;
+  dx -= FIELD*Math.round(dx/FIELD);
+  dy -= FIELD*Math.round(dy/FIELD);
+
+  /* ball coords in the square's local (unrotated) frame */
+  let [lx, ly] = rot(dx, dy, -S.angle);
+
+  /* detect penetrating walls of the concave hole; corner => both resolved */
+  if(Math.abs(lx) > C) applyWall(Math.sign(lx), 'x', lx, ly);
+  if(Math.abs(ly) > C) applyWall(Math.sign(ly), 'y', lx, ly);
+
+  /* clamp center back onto [-C,C]^2 -> prevents clip/tunnel out of concave corner */
+  lx = Math.max(-C, Math.min(C, lx));
+  ly = Math.max(-C, Math.min(C, ly));
+
+  /* transform back to world and re-wrap */
+  let [rx, ry] = rot(lx, ly, S.angle);
+  ball.x = wrap(S.cx + rx);
+  ball.y = wrap(S.cy + ry);
+}
+
+/* ---------- loop (fixed timestep, speed-adaptive substeps) ---------- */
+const DT       = 1/60;
+const MAX_DISP = 1.5;                 // px per substep -> no tunneling
+let acc = 0, last = performance.now();
+
+function frame(now){
+  acc += Math.min(0.1, (now-last)/1000); last = now;
+  while(acc >= DT){
+    const speed = Math.hypot(ball.vx, ball.vy);
+    const sub   = Math.max(1, Math.round(speed*DT/MAX_DISP));
+    const h     = DT/sub;
+    for(let i=0;i<sub;i++) step(h);
+    acc -= DT;
+  }
+  render();
+  document.getElementById('ke').textContent = ke().toFixed(2);
+  requestAnimationFrame(frame);
+}
+
+/* ---------- render ---------- */
+const ctx = document.getElementById('c').getContext('2d');
+
+function drawFrame(cx, cy){
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(S.angle);
+  ctx.fillStyle = '#33517f';
+  ctx.beginPath();
+  ctx.rect(-OUTER_HALF,-OUTER_HALF, OUTER_HALF*2, OUTER_HALF*2); // outer
+  ctx.rect(-INNER_HALF,-INNER_HALF, INNER_HALF*2, INNER_HALF*2); // hole (evenodd)
+  ctx.fill('evenodd');
+  ctx.lineWidth = 2; ctx.strokeStyle = '#6fa8dc';
+  ctx.strokeRect(-OUTER_HALF,-OUTER_HALF, OUTER_HALF*2, OUTER_HALF*2);
+  ctx.restore();
+}
+
+function render(){
+  ctx.clearRect(0,0,FIELD,FIELD);
+  ctx.strokeStyle='#1a2030'; ctx.lineWidth=1;
+  for(let i=0;i<=FIELD;i+=64){ ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,FIELD); ctx.stroke();
+                               ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(FIELD,i); ctx.stroke(); }
+  ctx.strokeStyle='#2a2f3a'; ctx.lineWidth=2; ctx.strokeRect(0,0,FIELD,FIELD);
+
+  /* square: draw all 9 wrapped copies so a wrapping/rotating square never splits */
+  for(let ox=-1;ox<=1;ox++) for(let oy=-1;oy<=1;oy++){
+    if(Math.abs(ox*FIELD + S.cx) < FIELD+OUTER_HALF && Math.abs(oy*FIELD + S.cy) < FIELD+OUTER_HALF)
+      drawFrame(S.cx+ox*FIELD, S.cy+oy*FIELD);
+  }
+
+  /* ball: draw copies that fall on-screen (handles edge wrap) */
+  for(let ox=-1;ox<=1;ox++) for(let oy=-1;oy<=1;oy++){
+    const x = ball.x + ox*FIELD, y = ball.y + oy*FIELD;
+    if(x>-BALL_R && x<FIELD+BALL_R && y>-BALL_R && y<FIELD+BALL_R){
+      ctx.beginPath(); ctx.arc(x,y,BALL_R,0,Math.PI*2); ctx.fillStyle='#ffcf5c'; ctx.fill();
+    }
+  }
+}
+
+function ke(){
+  let e = 0.5*MASS_BALL*(ball.vx**2+ball.vy**2);
+  e  += 0.5*MASS_SQ*(S.vx**2+S.vy**2);
+  if(!S.locked) e += 0.5*I_SQ*S.omega**2;
+  return e;
+}
+
+/* ---------- controls ---------- */
+document.getElementById('rot').addEventListener('change', e=>{
+  S.locked = !e.target.checked;      // checked => rotation allowed (unlocked)
+  if(S.locked) S.omega = 0;          // locking kills any spin
+});
+document.getElementById('reset').addEventListener('click', ()=>{
+  S.cx=512;S.cy=512;S.vx=0;S.vy=0;S.angle=0;S.omega=0;
+  ball.x=512;ball.y=512;
+  const a=Math.random()*Math.PI*2, sp=200;
+  ball.vx=Math.cos(a)*sp; ball.vy=Math.sin(a)*sp;
+});
+
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Ball in Concave Square — XY-Wrap</title>
+	<style>
+		:root {
+			--bg: #0b1020;
+			--panel: #121a33;
+			--frame: #5ad1ff;
+			--frameEdge: #2a89b8;
+			--ball: #ffd152;
+			--grid: rgba(255,255,255,0.04);
+		}
+		* { box-sizing: border-box; }
+		html, body {
+			margin: 0;
+			height: 100%;
+			background: radial-gradient(1200px 800px at 50% -10%, #16204a, var(--bg));
+			color: #dfe7ff;
+			font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+		}
+		.wrap {
+			min-height: 100%;
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			gap: 12px;
+			padding: 16px;
+		}
+		h1 {
+			font-size: 15px;
+			font-weight: 600;
+			letter-spacing: .5px;
+			margin: 4px 0 0;
+			color: #9fb4ff;
+		}
+		.stage {
+			position: relative;
+			width: min(88vmin, 720px);
+			aspect-ratio: 1 / 1;
+			border: 1px solid #2a3766;
+			border-radius: 10px;
+			overflow: hidden;
+			box-shadow: 0 20px 60px rgba(0,0,0,.5), inset 0 0 60px rgba(0,0,0,.4);
+		}
+		canvas { display: block; width: 100%; height: 100%; }
+		.hud {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 8px 18px;
+			justify-content: center;
+			background: var(--panel);
+			border: 1px solid #263258;
+			border-radius: 10px;
+			padding: 10px 16px;
+			font-size: 12.5px;
+			max-width: min(88vmin, 720px);
+		}
+		.hud b { color: #7ee0ff; font-weight: 600; }
+		.hud .g { color: #8ea0d0; }
+		.controls { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+		button {
+			background: #1c2b52;
+			color: #cfe0ff;
+			border: 1px solid #34467e;
+			border-radius: 8px;
+			padding: 8px 14px;
+			font: inherit;
+			font-size: 12.5px;
+			cursor: pointer;
+			transition: .15s;
+		}
+		button:hover { background: #253869; border-color: #4a63aa; }
+		.note { font-size: 11.5px; color: #8ea0d0; max-width: 620px; text-align: center; line-height: 1.5; }
+	</style>
+</head>
+<body>
+	<div class="wrap">
+		<h1>BALL IN CONCAVE SQUARE · 1024×1024 TORUS</h1>
+		<div class="stage">
+			<canvas id="cv" width="1024" height="1024"></canvas>
+		</div>
+		<div class="hud" id="hud"></div>
+		<div class="controls">
+			<button id="kick">Kick ball</button>
+			<button id="reset">Reset</button>
+			<button id="pause">Pause</button>
+		</div>
+		<div class="note">
+			Both bodies have mass 1. The ball reflects off the inner walls of the moving hole as a
+			1-D elastic collision (equal masses → the touching velocity component is exchanged),
+			so total momentum and kinetic energy are conserved exactly — no friction, no loss.
+			The field wraps in X and Y; the square and ball are drawn as tiled copies and all
+			relative math uses the shortest toroidal distance.
+		</div>
+	</div>
+
+	<script>
+	(function () {
+		"use strict";
+
+		const cv = document.getElementById("cv");
+		const ctx = cv.getContext("2d");
+		const hud = document.getElementById("hud");
+
+		// ---- World constants ----
+		const F = 1024;          // field size (wraps in x and y)
+		const OUT = 200;         // outer square edge
+		const HOLE = 100;        // inner square hole edge
+		const R = 5;             // ball radius (10px diameter)
+		const HALF_OUT = OUT / 2;
+		const HALF_HOLE = HOLE / 2;
+		const LIMIT = HALF_HOLE - R; // 45 : max |relative center offset| inside hole
+
+		// ---- Bodies (mass = 1 each) ----
+		let square, ball, paused = false;
+
+		function reset() {
+			square = { x: F / 2, y: F / 2, vx: 0, vy: 0 };
+			// Ball starts centered inside the hole (== square center)
+			ball = { x: F / 2, y: F / 2, vx: 213, vy: 137 };
+			paused = false;
+			document.getElementById("pause").textContent = "Pause";
+		}
+
+		// ---- Toroidal helpers ----
+		function wrap(v) { return ((v % F) + F) % F; }
+		// shortest signed difference a-b on the wrapped axis
+		function delta(a, b) {
+			let d = a - b;
+			if (d > F / 2) d -= F;
+			else if (d < -F / 2) d += F;
+			return d;
+		}
+
+		// ---- Physics ----
+		function integrate(dt) {
+			// substep to prevent tunneling through the thin walls
+			const N = 6;
+			const h = dt / N;
+			for (let i = 0; i < N; i++) subStep(h);
+		}
+
+		function subStep(h) {
+			// advance
+			ball.x = wrap(ball.x + ball.vx * h);
+			ball.y = wrap(ball.y + ball.vy * h);
+			square.x = wrap(square.x + square.vx * h);
+			square.y = wrap(square.y + square.vy * h);
+
+			// relative position of ball inside the hole (wrap-aware)
+			const rx = delta(ball.x, square.x);
+			const ry = delta(ball.y, square.y);
+
+			// --- X walls ---
+			if (rx > LIMIT && (ball.vx - square.vx) > 0) {
+				// equal masses: swap x-velocity component (elastic, exact)
+				const t = ball.vx; ball.vx = square.vx; square.vx = t;
+				ball.x = wrap(square.x + LIMIT); // seat exactly on wall
+			} else if (rx < -LIMIT && (ball.vx - square.vx) < 0) {
+				const t = ball.vx; ball.vx = square.vx; square.vx = t;
+				ball.x = wrap(square.x - LIMIT);
+			}
+
+			// --- Y walls ---
+			if (ry > LIMIT && (ball.vy - square.vy) > 0) {
+				const t = ball.vy; ball.vy = square.vy; square.vy = t;
+				ball.y = wrap(square.y + LIMIT);
+			} else if (ry < -LIMIT && (ball.vy - square.vy) < 0) {
+				const t = ball.vy; ball.vy = square.vy; square.vy = t;
+				ball.y = wrap(square.y - LIMIT);
+			}
+		}
+
+		// ---- Rendering (tiled copies for wrap) ----
+		function drawGrid() {
+			ctx.fillStyle = "#0c1226";
+			ctx.fillRect(0, 0, F, F);
+			ctx.strokeStyle = "rgba(255,255,255,0.045)";
+			ctx.lineWidth = 1;
+			const s = 64;
+			ctx.beginPath();
+			for (let g = 0; g <= F; g += s) {
+				ctx.moveTo(g, 0); ctx.lineTo(g, F);
+				ctx.moveTo(0, g); ctx.lineTo(F, g);
+			}
+			ctx.stroke();
+		}
+
+		function drawSquareAt(cx, cy) {
+			// outer frame
+			ctx.fillStyle = "#3aa9d8";
+			ctx.fillRect(cx - HALF_OUT, cy - HALF_OUT, OUT, OUT);
+			// bevel edge
+			ctx.strokeStyle = "#7ee6ff";
+			ctx.lineWidth = 3;
+			ctx.strokeRect(cx - HALF_OUT + 1.5, cy - HALF_OUT + 1.5, OUT - 3, OUT - 3);
+			// carve the hole (fill with field colour so it reads as concave)
+			ctx.fillStyle = "#0c1226";
+			ctx.fillRect(cx - HALF_HOLE, cy - HALF_HOLE, HOLE, HOLE);
+			ctx.strokeStyle = "#1d5f7d";
+			ctx.lineWidth = 2;
+			ctx.strokeRect(cx - HALF_HOLE + 1, cy - HALF_HOLE + 1, HOLE - 2, HOLE - 2);
+		}
+
+		function drawBallAt(cx, cy) {
+			const grd = ctx.createRadialGradient(cx - 2, cy - 2, 1, cx, cy, R);
+			grd.addColorStop(0, "#fff3c4");
+			grd.addColorStop(1, "#f0b73a");
+			ctx.fillStyle = grd;
+			ctx.beginPath();
+			ctx.arc(cx, cy, R, 0, Math.PI * 2);
+			ctx.fill();
+		}
+
+		function render() {
+			drawGrid();
+			// draw squares (all 9 wrapped tiles), then balls on top
+			for (let ox = -1; ox <= 1; ox++)
+				for (let oy = -1; oy <= 1; oy++)
+					drawSquareAt(square.x + ox * F, square.y + oy * F);
+			for (let ox = -1; ox <= 1; ox++)
+				for (let oy = -1; oy <= 1; oy++)
+					drawBallAt(ball.x + ox * F, ball.y + oy * F);
+		}
+
+		// ---- HUD (verify conservation) ----
+		function updateHud() {
+			const px = ball.vx + square.vx;          // total momentum x (m=1 each)
+			const py = ball.vy + square.vy;          // total momentum y
+			const ke = 0.5 * (ball.vx * ball.vx + ball.vy * ball.vy) +
+			           0.5 * (square.vx * square.vx + square.vy * square.vy);
+			hud.innerHTML =
+				`<span class="g">ball&nbsp;v</span> <b>(${ball.vx.toFixed(1)}, ${ball.vy.toFixed(1)})</b>` +
+				`<span class="g">square&nbsp;v</span> <b>(${square.vx.toFixed(1)}, ${square.vy.toFixed(1)})</b>` +
+				`<span class="g">Σp</span> <b>(${px.toFixed(3)}, ${py.toFixed(3)})</b>` +
+				`<span class="g">ΣKE</span> <b>${ke.toFixed(3)}</b>`;
+		}
+
+		// ---- Loop ----
+		let last = performance.now();
+		function loop(now) {
+			let dt = (now - last) / 1000;
+			last = now;
+			if (dt > 0.05) dt = 0.05; // clamp big frame gaps
+			if (!paused) integrate(dt);
+			render();
+			updateHud();
+			requestAnimationFrame(loop);
+		}
+
+		// ---- Controls ----
+		document.getElementById("reset").addEventListener("click", reset);
+		document.getElementById("pause").addEventListener("click", function () {
+			paused = !paused;
+			this.textContent = paused ? "Resume" : "Pause";
+		});
+		document.getElementById("kick").addEventListener("click", function () {
+			const a = Math.random() * Math.PI * 2;
+			const s = 120 + Math.random() * 160;
+			ball.vx += Math.cos(a) * s;
+			ball.vy += Math.sin(a) * s;
+		});
+
+		reset();
+		requestAnimationFrame(loop);
+	})();
+	</script>
+</body>
+</html>

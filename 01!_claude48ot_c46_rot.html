@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Ball in Concave Square — XY-Wrap</title>
+	<style>
+		:root {
+			--bg: #0b1020;
+			--panel: #121a33;
+		}
+		* { box-sizing: border-box; }
+		html, body {
+			margin: 0;
+			height: 100%;
+			background: radial-gradient(1200px 800px at 50% -10%, #16204a, var(--bg));
+			color: #dfe7ff;
+			font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+		}
+		.wrap {
+			min-height: 100%;
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			gap: 12px;
+			padding: 16px;
+		}
+		h1 {
+			font-size: 15px;
+			font-weight: 600;
+			letter-spacing: .5px;
+			margin: 4px 0 0;
+			color: #9fb4ff;
+		}
+		.stage {
+			position: relative;
+			width: min(88vmin, 720px);
+			aspect-ratio: 1 / 1;
+			border: 1px solid #2a3766;
+			border-radius: 10px;
+			overflow: hidden;
+			box-shadow: 0 20px 60px rgba(0,0,0,.5), inset 0 0 60px rgba(0,0,0,.4);
+		}
+		canvas { display: block; width: 100%; height: 100%; }
+		.hud {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 8px 18px;
+			justify-content: center;
+			background: var(--panel);
+			border: 1px solid #263258;
+			border-radius: 10px;
+			padding: 10px 16px;
+			font-size: 12.5px;
+			max-width: min(88vmin, 720px);
+		}
+		.hud b { color: #7ee0ff; font-weight: 600; }
+		.hud .g { color: #8ea0d0; }
+		.controls {
+			display: flex;
+			gap: 8px;
+			flex-wrap: wrap;
+			justify-content: center;
+			align-items: center;
+		}
+		button {
+			background: #1c2b52;
+			color: #cfe0ff;
+			border: 1px solid #34467e;
+			border-radius: 8px;
+			padding: 8px 14px;
+			font: inherit;
+			font-size: 12.5px;
+			cursor: pointer;
+			transition: .15s;
+		}
+		button:hover { background: #253869; border-color: #4a63aa; }
+		label.toggle {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			font-size: 12.5px;
+			cursor: pointer;
+			background: #1c2b52;
+			border: 1px solid #34467e;
+			border-radius: 8px;
+			padding: 7px 14px;
+			transition: .15s;
+			user-select: none;
+		}
+		label.toggle:hover { background: #253869; border-color: #4a63aa; }
+		label.toggle input { accent-color: #5ad1ff; width: 15px; height: 15px; cursor: pointer; }
+		.note {
+			font-size: 11.5px;
+			color: #8ea0d0;
+			max-width: 620px;
+			text-align: center;
+			line-height: 1.5;
+		}
+	</style>
+</head>
+<body>
+	<div class="wrap">
+		<h1>BALL IN CONCAVE SQUARE · 1024×1024 TORUS</h1>
+		<div class="stage">
+			<canvas id="cv" width="1024" height="1024"></canvas>
+		</div>
+		<div class="hud" id="hud"></div>
+		<div class="controls">
+			<button id="kick">Kick ball</button>
+			<button id="reset">Reset</button>
+			<button id="pause">Pause</button>
+			<label class="toggle">
+				<input type="checkbox" id="rotCb"> Enable rotation
+			</label>
+		</div>
+		<div class="note">
+			Both bodies have mass 1. Elastic collisions conserve linear momentum,
+			angular momentum, and kinetic energy exactly — no friction, no loss.
+			When rotation is enabled the square's moment of inertia is computed
+			for the hollow shape (outer 200×200, hole 100×100).
+			The field wraps in X and Y.
+		</div>
+	</div>
+
+	<script>
+	(function () {
+		"use strict";
+
+		const cv = document.getElementById("cv");
+		const ctx = cv.getContext("2d");
+		const hud = document.getElementById("hud");
+		const rotCb = document.getElementById("rotCb");
+
+		// ---- World constants ----
+		const F = 1024;
+		const OUT = 200;
+		const HOLE = 100;
+		const R = 5;
+		const HALF_OUT = OUT / 2;
+		const HALF_HOLE = HOLE / 2;
+		const LIMIT = HALF_HOLE - R; // 45
+
+		// Moment of inertia for hollow square (mass=1)
+		// Uniform density. Total area = 200^2 - 100^2 = 30000
+		// density = 1/30000
+		// I_solid_square(side a, mass m) = m*a^2/6
+		// I_outer_full = (density * 200^2) * 200^2 / 6 = (40000/30000) * 40000/6
+		// I_inner_full = (density * 100^2) * 100^2 / 6 = (10000/30000) * 10000/6
+		// I = I_outer - I_inner
+		//   = (40000*40000 - 10000*10000) / (30000*6)
+		//   = (1600000000 - 100000000) / 180000
+		//   = 1500000000 / 180000 = 8333.333...
+		const I_SQUARE = 1500000000 / 180000; // ≈ 8333.33
+		const M_BALL = 1;
+		const M_SQUARE = 1;
+
+		// ---- State ----
+		let sq, ball, paused = false;
+
+		function reset() {
+			sq = { x: F / 2, y: F / 2, vx: 0, vy: 0, angle: 0, omega: 0 };
+			ball = { x: F / 2, y: F / 2, vx: 213, vy: 137 };
+			paused = false;
+			document.getElementById("pause").textContent = "Pause";
+		}
+
+		// ---- Toroidal helpers ----
+		function wrapVal(v) { return ((v % F) + F) % F; }
+		function torusDelta(a, b) {
+			let d = a - b;
+			if (d > F / 2) d -= F;
+			else if (d < -F / 2) d += F;
+			return d;
+		}
+
+		// ---- Rotation helpers ----
+		function rotateVec(x, y, cos, sin) {
+			return { x: x * cos - y * sin, y: x * sin + y * cos };
+		}
+
+		// ---- Physics ----
+		function integrate(dt) {
+			const rotEnabled = rotCb.checked;
+			const N = 8;
+			const h = dt / N;
+			for (let i = 0; i < N; i++) subStep(h, rotEnabled);
+		}
+
+		function subStep(h, rotEnabled) {
+			// advance positions
+			ball.x = wrapVal(ball.x + ball.vx * h);
+			ball.y = wrapVal(ball.y + ball.vy * h);
+			sq.x = wrapVal(sq.x + sq.vx * h);
+			sq.y = wrapVal(sq.y + sq.vy * h);
+			if (rotEnabled) {
+				sq.angle += sq.omega * h;
+			} else {
+				sq.omega = 0;
+				sq.angle = 0;
+			}
+
+			// relative position of ball w.r.t. square center (wrap-aware)
+			let rx = torusDelta(ball.x, sq.x);
+			let ry = torusDelta(ball.y, sq.y);
+
+			if (!rotEnabled) {
+				// ---- Simple axis-aligned collision (swap velocities) ----
+				if (rx > LIMIT && (ball.vx - sq.vx) > 0) {
+					const t = ball.vx; ball.vx = sq.vx; sq.vx = t;
+					ball.x = wrapVal(sq.x + LIMIT);
+				} else if (rx < -LIMIT && (ball.vx - sq.vx) < 0) {
+					const t = ball.vx; ball.vx = sq.vx; sq.vx = t;
+					ball.x = wrapVal(sq.x - LIMIT);
+				}
+				if (ry > LIMIT && (ball.vy - sq.vy) > 0) {
+					const t = ball.vy; ball.vy = sq.vy; sq.vy = t;
+					ball.y = wrapVal(sq.y + LIMIT);
+				} else if (ry < -LIMIT && (ball.vy - sq.vy) < 0) {
+					const t = ball.vy; ball.vy = sq.vy; sq.vy = t;
+					ball.y = wrapVal(sq.y - LIMIT);
+				}
+				return;
+			}
+
+			// ---- Rotation-aware collision ----
+			// Transform ball position into square's local (rotated) frame
+			const cosA = Math.cos(-sq.angle);
+			const sinA = Math.sin(-sq.angle);
+			let loc = rotateVec(rx, ry, cosA, sinA);
+
+			// Check each of the 4 inner walls in local space
+			// Wall normals in local frame point inward:
+			//   right wall at x=+LIMIT, normal (-1,0)
+			//   left wall at x=-LIMIT, normal (+1,0)
+			//   bottom wall at y=+LIMIT, normal (0,-1)
+			//   top wall at y=-LIMIT, normal (0,+1)
+
+			const walls = [];
+			if (loc.x > LIMIT)  walls.push({ axis: "x", sign:  1, penetration: loc.x - LIMIT });
+			if (loc.x < -LIMIT) walls.push({ axis: "x", sign: -1, penetration: -loc.x - LIMIT });
+			if (loc.y > LIMIT)  walls.push({ axis: "y", sign:  1, penetration: loc.y - LIMIT });
+			if (loc.y < -LIMIT) walls.push({ axis: "y", sign: -1, penetration: -loc.y - LIMIT });
+
+			// Sort by penetration descending to resolve deepest first
+			walls.sort((a, b) => b.penetration - a.penetration);
+
+			for (const wall of walls) {
+				// Recompute local position (may have changed from previous wall resolve)
+				rx = torusDelta(ball.x, sq.x);
+				ry = torusDelta(ball.y, sq.y);
+				loc = rotateVec(rx, ry, cosA, sinA);
+
+				// Check still penetrating
+				let pen;
+				if (wall.axis === "x") {
+					pen = wall.sign > 0 ? loc.x - LIMIT : -loc.x - LIMIT;
+				} else {
+					pen = wall.sign > 0 ? loc.y - LIMIT : -loc.y - LIMIT;
+				}
+				if (pen <= 0) continue;
+
+				// Contact point in local frame (on the wall surface)
+				let cpLocalX, cpLocalY;
+				if (wall.axis === "x") {
+					cpLocalX = wall.sign * LIMIT;
+					cpLocalY = loc.y;
+				} else {
+					cpLocalX = loc.x;
+					cpLocalY = wall.sign * LIMIT;
+				}
+
+				// Normal in local frame (pointing inward, away from wall)
+				let nLocalX, nLocalY;
+				if (wall.axis === "x") {
+					nLocalX = -wall.sign;
+					nLocalY = 0;
+				} else {
+					nLocalX = 0;
+					nLocalY = -wall.sign;
+				}
+
+				// Transform normal to world frame
+				const cosB = Math.cos(sq.angle);
+				const sinB = Math.sin(sq.angle);
+				const nw = rotateVec(nLocalX, nLocalY, cosB, sinB);
+
+				// Contact point in world-relative coords (from sq center)
+				const cpw = rotateVec(cpLocalX, cpLocalY, cosB, sinB);
+
+				// Velocity of contact point on the square body:
+				// v_contact = v_sq + omega × r_contact
+				// In 2D: omega × (rx,ry) = (-omega*ry, omega*rx)
+				const vcx = sq.vx + (-sq.omega * cpw.y);
+				const vcy = sq.vy + (sq.omega * cpw.x);
+
+				// Relative velocity of ball w.r.t. contact point
+				const vrelx = ball.vx - vcx;
+				const vrely = ball.vy - vcy;
+				const vrelDotN = vrelx * nw.x + vrely * nw.y;
+
+				// Only resolve if approaching (vrel dot n < 0 means approaching inward normal)
+				if (vrelDotN >= 0) continue;
+
+				// r × n (2D cross product: rx*ny - ry*nx)
+				const rCrossN = cpw.x * nw.y - cpw.y * nw.x;
+
+				// Impulse magnitude for elastic collision (coefficient of restitution = 1)
+				// j = -(1+e) * vrel·n / (1/m_ball + 1/m_sq + (r×n)^2 / I)
+				const j = -2 * vrelDotN / (1 / M_BALL + 1 / M_SQUARE + (rCrossN * rCrossN) / I_SQUARE);
+
+				// Apply impulse
+				ball.vx += (j / M_BALL) * nw.x;
+				ball.vy += (j / M_BALL) * nw.y;
+				sq.vx -= (j / M_SQUARE) * nw.x;
+				sq.vy -= (j / M_SQUARE) * nw.y;
+				sq.omega -= (rCrossN * j) / I_SQUARE;
+
+				// Correct position: move ball to contact surface
+				// Place ball at exactly LIMIT along the wall axis in local frame
+				if (wall.axis === "x") {
+					loc.x = wall.sign * LIMIT;
+				} else {
+					loc.y = wall.sign * LIMIT;
+				}
+				const corrected = rotateVec(loc.x, loc.y, cosB, sinB);
+				ball.x = wrapVal(sq.x + corrected.x);
+				ball.y = wrapVal(sq.y + corrected.y);
+			}
+		}
+
+		// ---- Rendering ----
+		function drawGrid() {
+			ctx.fillStyle = "#0c1226";
+			ctx.fillRect(0, 0, F, F);
+			ctx.strokeStyle = "rgba(255,255,255,0.045)";
+			ctx.lineWidth = 1;
+			const s = 64;
+			ctx.beginPath();
+			for (let g = 0; g <= F; g += s) {
+				ctx.moveTo(g, 0); ctx.lineTo(g, F);
+				ctx.moveTo(0, g); ctx.lineTo(F, g);
+			}
+			ctx.stroke();
+		}
+
+		function drawSquareAt(cx, cy, angle) {
+			ctx.save();
+			ctx.translate(cx, cy);
+			ctx.rotate(angle);
+			// outer frame
+			ctx.fillStyle = "#3aa9d8";
+			ctx.fillRect(-HALF_OUT, -HALF_OUT, OUT, OUT);
+			ctx.strokeStyle = "#7ee6ff";
+			ctx.lineWidth = 3;
+			ctx.strokeRect(-HALF_OUT + 1.5, -HALF_OUT + 1.5, OUT - 3, OUT - 3);
+			// carve hole
+			ctx.fillStyle = "#0c1226";
+			ctx.fillRect(-HALF_HOLE, -HALF_HOLE, HOLE, HOLE);
+			ctx.strokeStyle = "#1d5f7d";
+			ctx.lineWidth = 2;
+			ctx.strokeRect(-HALF_HOLE + 1, -HALF_HOLE + 1, HOLE - 2, HOLE - 2);
+			// rotation indicator line (from center to edge)
+			if (rotCb.checked) {
+				ctx.strokeStyle = "rgba(255,255,200,0.5)";
+				ctx.lineWidth = 2;
+				ctx.beginPath();
+				ctx.moveTo(HALF_HOLE + 4, 0);
+				ctx.lineTo(HALF_OUT - 4, 0);
+				ctx.stroke();
+			}
+			ctx.restore();
+		}
+
+		function drawBallAt(cx, cy) {
+			const grd = ctx.createRadialGradient(cx - 2, cy - 2, 1, cx, cy, R);
+			grd.addColorStop(0, "#fff3c4");
+			grd.addColorStop(1, "#f0b73a");
+			ctx.fillStyle = grd;
+			ctx.beginPath();
+			ctx.arc(cx, cy, R, 0, Math.PI * 2);
+			ctx.fill();
+		}
+
+		function render() {
+			drawGrid();
+			const angle = rotCb.checked ? sq.angle : 0;
+			for (let ox = -1; ox <= 1; ox++)
+				for (let oy = -1; oy <= 1; oy++)
+					drawSquareAt(sq.x + ox * F, sq.y + oy * F, angle);
+			for (let ox = -1; ox <= 1; ox++)
+				for (let oy = -1; oy <= 1; oy++)
+					drawBallAt(ball.x + ox * F, ball.y + oy * F);
+		}
+
+		// ---- HUD ----
+		function updateHud() {
+			const rotEnabled = rotCb.checked;
+			const px = ball.vx + sq.vx;
+			const py = ball.vy + sq.vy;
+
+			// KE = ½ m v² + ½ I ω²
+			const ke = 0.5 * M_BALL * (ball.vx * ball.vx + ball.vy * ball.vy)
+				+ 0.5 * M_SQUARE * (sq.vx * sq.vx + sq.vy * sq.vy)
+				+ (rotEnabled ? 0.5 * I_SQUARE * sq.omega * sq.omega : 0);
+
+			// Angular momentum about origin (wrap-aware): L = Σ r × mv + Iω
+			// For verification, compute about square center (simpler):
+			const rx = torusDelta(ball.x, sq.x);
+			const ry = torusDelta(ball.y, sq.y);
+			const Lball = M_BALL * (rx * ball.vy - ry * ball.vx);
+			const Lsq = I_SQUARE * sq.omega;
+			// Total angular momentum about world origin:
+			// L = r_ball × (m_ball * v_ball) + r_sq × (m_sq * v_sq) + I*omega
+			// But on a torus "about origin" is not conserved globally;
+			// what IS conserved is angular momentum about the system's COM.
+			// For display we show Lball_rel_sq + I*omega which is conserved
+			// because there's no external torque in the two-body interaction.
+			const Lrel = M_BALL * (rx * (ball.vy - sq.vy) - ry * (ball.vx - sq.vx)) + Lsq;
+
+			let html =
+				`<span class="g">ball v</span> <b>(${ball.vx.toFixed(1)}, ${ball.vy.toFixed(1)})</b>` +
+				`<span class="g">sq v</span> <b>(${sq.vx.toFixed(1)}, ${sq.vy.toFixed(1)})</b>` +
+				`<span class="g">Σp</span> <b>(${px.toFixed(3)}, ${py.toFixed(3)})</b>` +
+				`<span class="g">ΣKE</span> <b>${ke.toFixed(3)}</b>`;
+			if (rotEnabled) {
+				html +=
+					`<span class="g">ω</span> <b>${sq.omega.toFixed(4)}</b>` +
+					`<span class="g">L</span> <b>${Lrel.toFixed(3)}</b>`;
+			}
+			hud.innerHTML = html;
+		}
+
+		// ---- Loop ----
+		let last = performance.now();
+		function loop(now) {
+			let dt = (now - last) / 1000;
+			last = now;
+			if (dt > 0.05) dt = 0.05;
+			if (!paused) integrate(dt);
+			render();
+			updateHud();
+			requestAnimationFrame(loop);
+		}
+
+		// ---- Controls ----
+		document.getElementById("reset").addEventListener("click", reset);
+		document.getElementById("pause").addEventListener("click", function () {
+			paused = !paused;
+			this.textContent = paused ? "Resume" : "Pause";
+		});
+		document.getElementById("kick").addEventListener("click", function () {
+			const a = Math.random() * Math.PI * 2;
+			const s = 120 + Math.random() * 160;
+			ball.vx += Math.cos(a) * s;
+			ball.vy += Math.sin(a) * s;
+		});
+		rotCb.addEventListener("change", function () {
+			// When disabling rotation, stop spin and reset angle
+			if (!this.checked) {
+				// Transfer rotational energy into ball as a kick to conserve total KE
+				// Actually, just zero it cleanly on reset
+				sq.omega = 0;
+				sq.angle = 0;
+			}
+		});
+
+		reset();
+		requestAnimationFrame(loop);
+	})();
+	</script>
+</body>
+</html>

@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Bouncing Ball in Frame</title>
+<style>
+	body { margin: 0; overflow: hidden; background: #111; }
+	canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const W = 1024, H = 1024;
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+canvas.width = W;
+canvas.height = H;
+
+const SQ_SIZE = 200;
+const HOLE_SIZE = 100;
+const WALL_THICKNESS = (SQ_SIZE - HOLE_SIZE) / 2; // 50
+
+let sqX = W / 2 - SQ_SIZE / 2;
+let sqY = H / 2 - SQ_SIZE / 2;
+let sqVx = 0, sqVy = 0;
+const SQ_MASS = 1;
+
+const BALL_R = 5;
+const BALL_MASS = 1;
+let ballX = W / 2;
+let ballY = H / 2;
+let ballVx = 3.7, ballVy = -2.3;
+
+const TRAIL_LEN = 60;
+const trail = [];
+
+function handleCollisions() {
+	const hL = sqX + WALL_THICKNESS;
+	const hR = sqX + SQ_SIZE - WALL_THICKNESS;
+	const hT = sqY + WALL_THICKNESS;
+	const hB = sqY + SQ_SIZE - WALL_THICKNESS;
+
+	let bx = ballX, by = ballY;
+
+	function checkWall(wallCoord, axis, normalDir, rangeAxis, rangeMin, rangeMax) {
+		const size = axis === 'x' ? W : H;
+		const ballPos = axis === 'x' ? bx : by;
+		const offset = Math.round((wallCoord - ballPos) / size);
+		const adjustedWall = wallCoord - offset * size;
+
+		const dist = ballPos - adjustedWall;
+
+		if (Math.abs(dist) < BALL_R && normalDir * dist > 0) {
+			const otherBallPos = axis === 'x' ? by : bx;
+			const rMin = ((rangeMin % size) + size) % size;
+			const rMax = ((rangeMax % size) + size) % size;
+
+			let inRange = false;
+			if (rMin <= rMax) {
+				inRange = otherBallPos >= rMin && otherBallPos <= rMax;
+			} else {
+				inRange = otherBallPos >= rMin || otherBallPos <= rMax;
+			}
+
+			if (inRange) {
+				const newPos = adjustedWall + normalDir * BALL_R;
+				if (axis === 'x') {
+					bx = ((newPos % W) + W) % W;
+					const tempVx = ballVx;
+					ballVx = sqVx;
+					sqVx = tempVx;
+				} else {
+					by = ((newPos % H) + H) % H;
+					const tempVy = ballVy;
+					ballVy = sqVy;
+					sqVy = tempVy;
+				}
+			}
+		}
+	}
+
+	checkWall(hL, 'x', 1, 'y', hT, hB);
+	checkWall(hR, 'x', -1, 'y', hT, hB);
+	checkWall(hT, 'y', 1, 'x', hL, hR);
+	checkWall(hB, 'y', -1, 'x', hL, hR);
+
+	ballX = bx;
+	ballY = by;
+}
+
+function update() {
+	sqX += sqVx;
+	sqY += sqVy;
+	ballX += ballVx;
+	ballY += ballVy;
+
+	if (ballX < 0) ballX += W;
+	else if (ballX >= W) ballX -= W;
+	if (ballY < 0) ballY += H;
+	else if (ballY >= H) ballY -= H;
+
+	handleCollisions();
+
+	trail.push({ x: ballX, y: ballY });
+	if (trail.length > TRAIL_LEN) trail.shift();
+}
+
+function draw() {
+	ctx.fillStyle = '#0a0a1a';
+	ctx.fillRect(0, 0, W, H);
+
+	ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+	ctx.lineWidth = 1;
+	for (let x = 0; x < W; x += 64) {
+		ctx.beginPath();
+		ctx.moveTo(x, 0);
+		ctx.lineTo(x, H);
+		ctx.stroke();
+	}
+	for (let y = 0; y < H; y += 64) {
+		ctx.beginPath();
+		ctx.moveTo(0, y);
+		ctx.lineTo(W, y);
+		ctx.stroke();
+	}
+
+	const wsqX = ((sqX % W) + W) % W;
+	const wsqY = ((sqY % H) + H) % H;
+
+	ctx.shadowColor = '#4a90d9';
+	ctx.shadowBlur = 15;
+	ctx.fillStyle = '#2a6cb8';
+
+	drawRect(wsqX, wsqY, SQ_SIZE, WALL_THICKNESS);
+	drawRect(wsqX, wsqY + SQ_SIZE - WALL_THICKNESS, SQ_SIZE, WALL_THICKNESS);
+	drawRect(wsqX, wsqY + WALL_THICKNESS, WALL_THICKNESS, HOLE_SIZE);
+	drawRect(wsqX + SQ_SIZE - WALL_THICKNESS, wsqY + WALL_THICKNESS, WALL_THICKNESS, HOLE_SIZE);
+
+	ctx.shadowBlur = 0;
+
+	for (let i = 0; i < trail.length; i++) {
+		const alpha = (i / trail.length) * 0.6;
+		const r = BALL_R * (0.3 + 0.7 * (i / trail.length));
+		ctx.beginPath();
+		ctx.arc(trail[i].x, trail[i].y, r, 0, Math.PI * 2);
+		ctx.fillStyle = `rgba(255,107,107,${alpha})`;
+		ctx.fill();
+	}
+
+	ctx.shadowColor = '#ff6b6b';
+	ctx.shadowBlur = 20;
+	ctx.beginPath();
+	ctx.arc(ballX, ballY, BALL_R, 0, Math.PI * 2);
+	ctx.fillStyle = '#ff6b6b';
+	ctx.fill();
+	ctx.shadowBlur = 0;
+
+	ctx.beginPath();
+	ctx.arc(ballX, ballY, BALL_R * 0.5, 0, Math.PI * 2);
+	ctx.fillStyle = '#fff';
+	ctx.fill();
+}
+
+function drawRect(x, y, w, h) {
+	const wx = ((x % W) + W) % W;
+	const wy = ((y % H) + H) % H;
+
+	const xParts = [];
+	if (wx + w > W) {
+		xParts.push({ x: wx, w: W - wx });
+		xParts.push({ x: 0, w: (wx + w) % W });
+	} else {
+		xParts.push({ x: wx, w: w });
+	}
+
+	const yParts = [];
+	if (wy + h > H) {
+		yParts.push({ y: wy, h: H - wy });
+		yParts.push({ y: 0, h: (wy + h) % H });
+	} else {
+		yParts.push({ y: wy, h: h });
+	}
+
+	for (const xp of xParts) {
+		for (const yp of yParts) {
+			ctx.fillRect(xp.x, yp.y, xp.w, yp.h);
+		}
+	}
+}
+
+function loop() {
+	update();
+	draw();
+	requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>

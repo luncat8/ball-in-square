@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Elastic Ball in Rotating Square Ring</title>
+<style>
+html,
+body {
+	margin: 0;
+	background: #111;
+	color: #eee;
+	font: 14px sans-serif;
+	overflow: hidden;
+}
+
+#ui {
+	position: fixed;
+	top: 10px;
+	left: 10px;
+	z-index: 2;
+	padding: 8px 10px;
+	background: #222d;
+	border: 1px solid #555;
+	border-radius: 4px;
+}
+
+canvas {
+	display: block;
+	width: min(100vw, 100vh);
+	height: min(100vw, 100vh);
+	margin: auto;
+	background: #181818;
+}
+</style>
+</head>
+<body>
+<div id="ui">
+	<label>
+		<input id="rotateToggle" type="checkbox">
+		Free rotation
+	</label>
+</div>
+
+<canvas id="canvas" width="1024" height="1024"></canvas>
+
+<script>
+"use strict";
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const rotateToggle = document.getElementById("rotateToggle");
+
+const FIELD_SIZE = 1024;
+const OUTER_SIZE = 200;
+const INNER_SIZE = 100;
+const WALL = (OUTER_SIZE - INNER_SIZE) / 2;
+const BALL_RADIUS = 5;
+
+const BALL_MASS = 1;
+const BODY_MASS = 1;
+
+/*
+	For a square lamina with a centered square hole:
+
+	I = M / 6 * (outerSide² + innerSide²)
+*/
+const BODY_INERTIA =
+	BODY_MASS / 6 *
+	(OUTER_SIZE * OUTER_SIZE + INNER_SIZE * INNER_SIZE);
+
+const body = {
+	x: FIELD_SIZE / 2,
+	y: FIELD_SIZE / 2,
+	vx: 0,
+	vy: 0,
+	angle: 0,
+	omega: 0,
+	mass: BODY_MASS,
+	inertia: BODY_INERTIA
+};
+
+const ball = {
+	x: body.x,
+	y: body.y,
+	vx: 143,
+	vy: 97,
+	mass: BALL_MASS
+};
+
+let freeRotation = false;
+let previousTime = performance.now();
+
+rotateToggle.addEventListener("change", () => {
+	freeRotation = rotateToggle.checked;
+
+	if (!freeRotation) {
+		body.omega = 0;
+	}
+});
+
+function wrap(value) {
+	value %= FIELD_SIZE;
+
+	if (value < 0) {
+		value += FIELD_SIZE;
+	}
+
+	return value;
+}
+
+function wrapDelta(value) {
+	if (value > FIELD_SIZE / 2) {
+		value -= FIELD_SIZE;
+	}
+
+	if (value < -FIELD_SIZE / 2) {
+		value += FIELD_SIZE;
+	}
+
+	return value;
+}
+
+function rotateVector(x, y, angle) {
+	const c = Math.cos(angle);
+	const s = Math.sin(angle);
+
+	return {
+		x: x * c - y * s,
+		y: x * s + y * c
+	};
+}
+
+function inverseRotateVector(x, y, angle) {
+	return rotateVector(x, y, -angle);
+}
+
+function cross(ax, ay, bx, by) {
+	return ax * by - ay * bx;
+}
+
+function pointVelocityAtBodyPoint(localX, localY) {
+	const r = rotateVector(localX, localY, body.angle);
+
+	return {
+		x: body.vx - body.omega * r.y,
+		y: body.vy + body.omega * r.x
+	};
+}
+
+function applyImpulseToBody(ix, iy, localContactX, localContactY) {
+	body.vx += ix / body.mass;
+	body.vy += iy / body.mass;
+
+	if (freeRotation) {
+		const r = rotateVector(
+			localContactX,
+			localContactY,
+			body.angle
+		);
+
+		body.omega += cross(r.x, r.y, ix, iy) / body.inertia;
+	}
+}
+
+function collideBallWithInnerHole() {
+	const dx = wrapDelta(ball.x - body.x);
+	const dy = wrapDelta(ball.y - body.y);
+	const local = inverseRotateVector(dx, dy, body.angle);
+
+	const limit = INNER_SIZE / 2 - BALL_RADIUS;
+
+	const penetrations = [
+		{
+			depth: local.x - limit,
+			nx: -1,
+			ny: 0,
+			cx: INNER_SIZE / 2,
+			cy: local.y
+		},
+		{
+			depth: -limit - local.x,
+			nx: 1,
+			ny: 0,
+			cx: -INNER_SIZE / 2,
+			cy: local.y
+		},
+		{
+			depth: local.y - limit,
+			nx: 0,
+			ny: -1,
+			cx: local.x,
+			cy: INNER_SIZE / 2
+		},
+		{
+			depth: -limit - local.y,
+			nx: 0,
+			ny: 1,
+			cx: local.x,
+			cy: -INNER_SIZE / 2
+		}
+	];
+
+	/*
+		Resolve the deepest penetration first. Repeating this several
+		times handles corner contacts without clipping.
+	*/
+	for (let iteration = 0; iteration < 8; iteration++) {
+		let hit = null;
+
+		for (const candidate of penetrations) {
+			if (candidate.depth > 0 &&
+				(!hit || candidate.depth > hit.depth)) {
+				hit = candidate;
+			}
+		}
+
+		if (!hit) {
+			break;
+		}
+
+		const localNormal = {
+			x: hit.nx,
+			y: hit.ny
+		};
+
+		const worldNormal = rotateVector(
+			localNormal.x,
+			localNormal.y,
+			body.angle
+		);
+
+		/*
+			Move the ball back inside the hole. This is geometric
+			correction only; the velocity is corrected below by an
+			impulse, so no artificial damping is introduced.
+		*/
+		ball.x += worldNormal.x * (hit.depth + 0.000001);
+		ball.y += worldNormal.y * (hit.depth + 0.000001);
+
+		const wallVelocity = pointVelocityAtBodyPoint(
+			hit.cx,
+			hit.cy
+		);
+
+		const relativeVx = ball.vx - wallVelocity.x;
+		const relativeVy = ball.vy - wallVelocity.y;
+		const normalSpeed =
+			relativeVx * worldNormal.x +
+			relativeVy * worldNormal.y;
+
+		/*
+			The normal points into the hole. A negative relative
+			normal speed means the ball is moving into the wall.
+		*/
+		if (normalSpeed < 0) {
+			const contactRadius = rotateVector(
+				hit.cx,
+				hit.cy,
+				body.angle
+			);
+
+			const ballContactArm = {
+				x: worldNormal.x * -BALL_RADIUS,
+				y: worldNormal.y * -BALL_RADIUS
+			};
+
+			const bodyContactArm = contactRadius;
+
+			const ballAngularTerm = freeRotation
+				? cross(
+					ballContactArm.x,
+					ballContactArm.y,
+					worldNormal.x,
+					worldNormal.y
+				)
+				: 0;
+
+			const bodyAngularTerm = freeRotation
+				? cross(
+					bodyContactArm.x,
+					bodyContactArm.y,
+					worldNormal.x,
+					worldNormal.y
+				)
+				: 0;
+
+			const effectiveMass =
+				1 / ball.mass +
+				1 / body.mass +
+				(bodyAngularTerm * bodyAngularTerm) /
+				body.inertia;
+
+			const impulseMagnitude =
+				-2 * normalSpeed / effectiveMass;
+
+			const impulseX = worldNormal.x * impulseMagnitude;
+			const impulseY = worldNormal.y * impulseMagnitude;
+
+			ball.vx += impulseX / ball.mass;
+			ball.vy += impulseY / ball.mass;
+
+			applyImpulseToBody(
+				-impulseX,
+				-impulseY,
+				hit.cx,
+				hit.cy
+			);
+		}
+
+		/*
+			Recompute local coordinates after correction so the next
+			iteration uses the current wrapped position.
+		*/
+		const newDx = wrapDelta(ball.x - body.x);
+		const newDy = wrapDelta(ball.y - body.y);
+		const newLocal = inverseRotateVector(
+			newDx,
+			newDy,
+			body.angle
+		);
+
+		penetrations[0].depth = newLocal.x - limit;
+		penetrations[0].cy = newLocal.y;
+
+		penetrations[1].depth = -limit - newLocal.x;
+		penetrations[1].cy = newLocal.y;
+
+		penetrations[2].depth = newLocal.y - limit;
+		penetrations[2].cx = newLocal.x;
+
+		penetrations[3].depth = -limit - newLocal.y;
+		penetrations[3].cx = newLocal.x;
+	}
+}
+
+function simulate(dt) {
+	body.x = wrap(body.x + body.vx * dt);
+	body.y = wrap(body.y + body.vy * dt);
+
+	if (freeRotation) {
+		body.angle += body.omega * dt;
+	}
+
+	ball.x = wrap(ball.x + ball.vx * dt);
+	ball.y = wrap(ball.y + ball.vy * dt);
+
+	collideBallWithInnerHole();
+}
+
+function drawWrapped(drawFunction, x, y) {
+	for (let ox = -FIELD_SIZE; ox <= FIELD_SIZE; ox += FIELD_SIZE) {
+		for (let oy = -FIELD_SIZE; oy <= FIELD_SIZE; oy += FIELD_SIZE) {
+			drawFunction(x + ox, y + oy);
+		}
+	}
+}
+
+function drawBody(x, y) {
+	ctx.save();
+	ctx.translate(x, y);
+	ctx.rotate(body.angle);
+
+	ctx.fillStyle = "#4d8cff";
+	ctx.fillRect(
+		-OUTER_SIZE / 2,
+		-OUTER_SIZE / 2,
+		OUTER_SIZE,
+		OUTER_SIZE
+	);
+
+	ctx.fillStyle = "#181818";
+	ctx.fillRect(
+		-INNER_SIZE / 2,
+		-INNER_SIZE / 2,
+		INNER_SIZE,
+		INNER_SIZE
+	);
+
+	ctx.strokeStyle = "#8bb5ff";
+	ctx.lineWidth = 2;
+	ctx.strokeRect(
+		-OUTER_SIZE / 2,
+		-OUTER_SIZE / 2,
+		OUTER_SIZE,
+		OUTER_SIZE
+	);
+
+	ctx.strokeStyle = "#a9c8ff";
+	ctx.strokeRect(
+		-INNER_SIZE / 2,
+		-INNER_SIZE / 2,
+		INNER_SIZE,
+		INNER_SIZE
+	);
+
+	ctx.restore();
+}
+
+function drawBall(x, y) {
+	ctx.beginPath();
+	ctx.arc(x, y, BALL_RADIUS, 0, Math.PI * 2);
+	ctx.fillStyle = "#ffcf4a";
+	ctx.fill();
+}
+
+function render() {
+	ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+	drawWrapped(drawBody, body.x, body.y);
+	drawWrapped(drawBall, ball.x, ball.y);
+
+	ctx.fillStyle = "#aaa";
+	ctx.fillText(
+		"Ball velocity: " +
+		Math.hypot(ball.vx, ball.vy).toFixed(2) +
+		" px/s",
+		10,
+		canvas.height - 14
+	);
+}
+
+function animationFrame(now) {
+	let frameDt = (now - previousTime) / 1000;
+	previousTime = now;
+
+	frameDt = Math.min(frameDt, 0.05);
+
+	/*
+		Small fixed steps prevent tunneling through the 100px hole
+		even when the frame rate drops.
+	*/
+	const fixedStep = 1 / 480;
+	let remaining = frameDt;
+
+	while (remaining > 0) {
+		const step = Math.min(fixedStep, remaining);
+		simulate(step);
+		remaining -= step;
+	}
+
+	render();
+	requestAnimationFrame(animationFrame);
+}
+
+requestAnimationFrame(animationFrame);
+</script>
+</body>
+</html>

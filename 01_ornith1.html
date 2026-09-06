@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Balls in Square — Toroidal Physics</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+	background: #0e0e1a;
+	color: #c8c8d4;
+	font-family: 'Courier New', monospace;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	min-height: 100vh;
+}
+canvas {
+	border: 2px solid #2a2a3e;
+	image-rendering: pixelated;
+	display: block;
+}
+#ui {
+	margin: 14px 0 6px;
+	display: flex;
+	gap: 28px;
+	align-items: center;
+	font-size: 13px;
+	letter-spacing: .5px;
+}
+label { cursor: pointer; user-select: none; }
+input[type=checkbox] { margin-right: 6px; accent-color: #e94560; }
+#stats { color: #5a7a8a; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<div id="ui">
+	<label><input type="checkbox" id="chkRot"> Free Rotation + Translation</label>
+	<span id="stats"></span>
+</div>
+<canvas id="c" width="1024" height="1024"></canvas>
+
+<script>
+// ── constants ──────────────────────────────────────────────
+const W = 1024, H = 1024;
+const SUBSTEPS = 8;
+const FIXED_DT = (1 / 60) / SUBSTEPS;
+
+// ── canvas ─────────────────────────────────────────────────
+const cvs = document.getElementById('c');
+const ctx = cvs.getContext('2d');
+
+// ── square object ──────────────────────────────────────────
+const sq = {
+	x: W / 2,            // centre (unwrapped world coords)
+	y: H / 2,
+	vx: 0, vy: 0,        // translational velocity
+	angle: 0,             // rotation angle (rad)
+	angVel: 0,            // angular velocity (rad/s)
+	mass: 1,
+	halfOuter: 100,       // outer half-side = 200/2
+	halfHole: 50,         // inner hole half-side = 100/2
+};
+
+// analytical MOI for uniform square plate with centred square hole
+function computeMOI() {
+	const a = sq.halfOuter * 2;   // 200
+	const b = sq.halfHole * 2;    // 100
+	const rho = sq.mass / (a * a - b * b);          // mass per unit area
+	const mO = rho * a * a;                           // virtual full-plate mass
+	const mI = rho * b * b;                           // removed inner mass
+	return (1 / 12) * (mO * (a * a + a * a) - mI * (b * b + b * b));
+}
+sq.moi = computeMOI();   // ≈ 8333.33
+
+// ── ball ───────────────────────────────────────────────────
+const ball = {
+	x: W / 2, y: H / 2,     // centre (unwrapped)
+	vx: 73, vy: -47,         // initial velocity px/s
+	radius: 5,               // 10 px diameter → r=5
+	mass: 1,
+};
+
+// ── rotation toggle ────────────────────────────────────────
+const chkRot = document.getElementById('chkRot');
+let freeRot = false;
+chkRot.addEventListener('change', e => {
+	freeRot = e.target.checked;
+	if (!freeRot) sq.angVel = 0;
+});
+
+// ── geometry helpers ───────────────────────────────────────
+// Inner-wall segments in the square's LOCAL frame (before rotation).
+// Each segment: {x1,y1,x2,y2} endpoints, and the inward-pointing normal {nx,ny}.
+const INNER_SEGMENTS = [
+	{ x1: -50, y1: -50, x2:  50, y2: -50, nx:  0, ny:  1 },   // top    wall → down into hole
+	{ x1: -50, y1:  50, x2:  50, y2:  50, nx:  0, ny: -1 },   // bottom → up into hole
+	{ x1: -50, y1: -50, x2: -50, y2:  50, nx:  1, ny:  0 },   // left   → right into hole
+	{ x1:  50, y1: -50, x2:  50, y2:  50, nx: -1, ny:  0 },   // right  → left into hole
+];
+
+// Rotate a point (px,py) by angle θ around origin.
+function rotPoint(px, py, theta) {
+	const c = Math.cos(theta), s = Math.sin(theta);
+	return [c * px - s * py, s * px + c * py];
+}
+
+// Closest point on segment (x1,y1)-(x2,y2) to point (px,py).
+function closestOnSegment(px, py, x1, y1, x2, y2) {
+	const dx = x2 - x1, dy = y2 - y1;
+	const lenSq = dx * dx + dy * dy;
+	let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+	t = Math.max(0, Math.min(1, t));
+	return [x1 + t * dx, y1 + t * dy];
+}
+
+// ── impulse-based collision resolution ─────────────────────
+function resolveCollision(b, s, nX, nY, cx, cy) {
+	// r_b: ball-centre → contact (world frame)
+	const rbx = cx - b.x;
+	const rby = cy - b.y;
+
+	// r_s: square-centre → contact, expressed in square's LOCAL frame
+	const ddx = cx - s.x, ddy = cy - s.y;
+	const [rsx, rsy] = rotPoint(ddx, ddy, -s.angle);
+
+	// velocity of the contact point on the square (world frame)
+	const vcsx = s.vx - s.angVel * rsy;
+	const vcsy = s.vy +  s.angVel * rsx;
+
+	// relative velocity at contact
+	const vrX = b.vx - vcsx;
+	const vrY = b.vy - vcsy;
+
+	// normal component (positive → separating)
+	const vn = vrX * nX + vrY * nY;
+	if (vn > 0) return;                       // already separating
+
+	// impulse scalar  (e = 1, perfectly elastic, no friction)
+	const rsCrossN = rsx * nY - rsy * nX;     // 2-D cross product r_s × n
+	const invMassSum = 1 / b.mass + 1 / s.mass;
+	const rotTerm  = (rsCrossN * rsCrossN) / s.moi;
+	const j = (-2 * vn) / (invMassSum + rotTerm);
+
+	// apply impulse to ball
+	b.vx += j * nX / b.mass;
+	b.vy += j * nY / b.mass;
+
+	// apply equal-and-opposite impulse to square
+	s.vx -= j * nX / s.mass;
+	s.vy -= j * nY / s.mass;
+
+	if (freeRot) {
+		s.angVel += j * rsCrossN / s.moi;
+	}
+}
+
+// ── collision check against one wrapped copy of the square ─
+function checkCopy(b, s, ox, oy) {
+	const cx = s.x + ox;          // world x of this copy's centre
+	const cy = s.y + oy;          // world y
+
+	for (const seg of INNER_SEGMENTS) {
+		// rotate segment endpoints into world frame
+		const [ex1, ey1] = rotPoint(seg.x1, seg.y1, s.angle);
+		const [ex2, ey2] = rotPoint(seg.x2, seg.y2, s.angle);
+		const sx1 = ex1 + cx, sy1 = ey1 + cy;
+		const sx2 = ex2 + cx, sy2 = ey2 + cy;
+
+		// closest point on this world-space segment to ball centre
+		const [cpx, cpy] = closestOnSegment(b.x, b.y, sx1, sy1, sx2, sy2);
+
+		const dX = b.x - cpx;
+		const dY = b.y - cpy;
+		const distSq = dX * dX + dY * dY;
+		const rSq = b.radius * b.radius;
+
+		if (distSq < rSq) {
+			const dist = Math.sqrt(distSq);
+			if (dist === 0) continue;   // degenerate — skip
+
+			// normal from wall → ball
+			const nX = dX / dist;
+			const nY = dY / dist;
+
+			// push ball out of penetration
+			const pen = b.radius - dist;
+			b.x += nX * pen;
+			b.y += nY * pen;
+
+			resolveCollision(b, s, nX, nY, cpx, cpy);
+		}
+	}
+}
+
+// ── single physics sub-step ────────────────────────────────
+function physicsStep() {
+	// integrate velocities → positions
+	ball.x += ball.vx * FIXED_DT;
+	ball.y += ball.vy * FIXED_DT;
+
+	sq.x   += sq.vx   * FIXED_DT;
+	sq.y   += sq.vy   * FIXED_DT;
+	if (freeRot) sq.angle += sq.angVel * FIXED_DT;
+
+	// check collisions against all 9 wrapped copies of the square
+	for (let ky = -1; ky <= 1; ky++) {
+		for (let kx = -1; kx <= 1; kx++) {
+			checkCopy(ball, sq, kx * W, ky * H);
+		}
+	}
+}
+
+// ── render ─────────────────────────────────────────────────
+function draw() {
+	ctx.fillStyle = '#0e0e1a';
+	ctx.fillRect(0, 0, W, H);
+
+	// subtle grid
+	ctx.strokeStyle = 'rgba(255,255,255,0.025)';
+	ctx.lineWidth = 1;
+	for (let i = 0; i < W; i += 64) {
+		ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, H); ctx.stroke();
+		ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(W, i); ctx.stroke();
+	}
+
+	// field border
+	ctx.strokeStyle = '#2a2a3e';
+	ctx.lineWidth = 2;
+	ctx.strokeRect(1, 1, W - 2, H - 2);
+
+	// draw square at every visible wrapped position
+	for (let ky = -1; ky <= 1; ky++) {
+		for (let kx = -1; kx <= 1; kx++) {
+			const sx = sq.x + kx * W;
+			const sy = sq.y + ky * H;
+			if (sx < -200 || sx > W + 200 || sy < -200 || sy > H + 200) continue;
+
+			ctx.save();
+			ctx.translate(sx, sy);
+			ctx.rotate(sq.angle);
+
+			// wall fill (semi-transparent)
+			ctx.fillStyle = 'rgba(233,69,96,0.18)';
+			ctx.fillRect(-100, -100, 200, 50);   // top
+			ctx.fillRect(-100,  50, 200, 50);   // bottom
+			ctx.fillRect(-100, -50,  50, 100);  // left
+			ctx.fillRect(  50, -50,  50, 100);  // right
+
+			// wall outlines
+			ctx.strokeStyle = '#e94560';
+			ctx.lineWidth = 2;
+			ctx.strokeRect(-100, -100, 200, 200);   // outer border
+			ctx.strokeRect(-50, -50, 100, 100);     // inner hole border
+
+			// rotation indicator: small line from centre to top-left corner
+			ctx.strokeStyle = 'rgba(233,69,96,0.7)';
+			ctx.lineWidth = 2;
+			ctx.beginPath();
+			ctx.moveTo(0, 0);
+			ctx.lineTo(-80, -80);
+			ctx.stroke();
+
+			// centre dot
+			ctx.fillStyle = '#e94560';
+			ctx.beginPath();
+			ctx.arc(0, 0, 3, 0, Math.PI * 2);
+			ctx.fill();
+
+			ctx.restore();
+		}
+	}
+
+	// draw ball at every visible wrapped position
+	for (let ky = -1; ky <= 1; ky++) {
+		for (let kx = -1; kx <= 1; kx++) {
+			const bx = ((ball.x + kx * W) % W + W) % W;
+			const by = ((ball.y + ky * H) % H + H) % H;
+			if (bx < -20 || bx > W + 20 || by < -20 || by > H + 20) continue;
+
+			// glow
+			const grad = ctx.createRadialGradient(bx, by, 0, bx, by, ball.radius * 3);
+			grad.addColorStop(0, 'rgba(83,168,182,0.35)');
+			grad.addColorStop(1, 'rgba(83,168,182,0)');
+			ctx.fillStyle = grad;
+			ctx.beginPath();
+			ctx.arc(bx, by, ball.radius * 3, 0, Math.PI * 2);
+			ctx.fill();
+
+			// ball body
+			ctx.fillStyle = '#0f3460';
+			ctx.strokeStyle = '#53a8b6';
+			ctx.lineWidth = 2;
+			ctx.beginPath();
+			ctx.arc(bx, by, ball.radius, 0, Math.PI * 2);
+			ctx.fill();
+			ctx.stroke();
+		}
+	}
+
+	// stats overlay
+	const speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy).toFixed(1);
+	let ke = 0.5 * ball.mass * (ball.vx * ball.vx + ball.vy * ball.vy);
+	if (freeRot) {
+		ke += 0.5 * sq.mass * (sq.vx * sq.vx + sq.vy * sq.vy)
+		    + 0.5 * sq.moi * sq.angVel * sq.angVel;
+	} else {
+		ke += 0.5 * sq.mass * (sq.vx * sq.vx + sq.vy * sq.vy);
+	}
+	document.getElementById('stats').textContent =
+		`speed ${speed} px/s  |  KE ${ke.toFixed(2)}  |  substeps ${SUBSTEPS}`;
+}
+
+// ── main loop (fixed timestep with accumulator) ────────────
+let lastTime = 0;
+let acc = 0;
+
+function loop(ts) {
+	if (lastTime === 0) lastTime = ts;
+	const dt = Math.min((ts - lastTime) / 1000, 0.1);   // cap to avoid spiral-of-death
+	lastTime = ts;
+	acc += dt;
+	while (acc >= FIXED_DT) {
+		physicsStep();
+		acc -= FIXED_DT;
+	}
+	draw();
+	requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

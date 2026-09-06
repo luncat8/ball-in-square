@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { margin: 0; background: #111; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+  canvas { border: 1px solid #333; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1024" height="1024"></canvas>
+<script>
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const W = 1024, H = 1024;
+
+  const SQ_SIZE = 200;
+  const HOLE_SIZE = 100;
+  const BALL_R = 5;
+  const SQ_M = 1;
+  const BALL_M = 1;
+  const SQ_HALF = SQ_SIZE / 2;
+  const HOLE_HALF = HOLE_SIZE / 2;
+
+  let ball = { x: W / 2, y: H / 2, vx: 500, vy: 375 };
+  let square = { x: W / 2, y: H / 2, vx: 0, vy: 0 };
+
+  const DT = 1 / 120;
+  const SUBSTEPS = 4;
+  const subDt = DT / SUBSTEPS;
+
+  function wrap(v) {
+    return ((v % W) + W) % W;
+  }
+
+  function closestPoint(px, py, rx, ry, rw, rh) {
+    return {
+      x: Math.max(rx, Math.min(px, rx + rw)),
+      y: Math.max(ry, Math.min(py, ry + rh))
+    };
+  }
+
+  function resolveBallSquare(bx, by, bvx, bvy, svx, svy, nx, ny, wx, wy, ww, wh) {
+    if (ww <= 0 || wh <= 0) return { bx, by, bvx, bvy, svx, svy };
+
+    const cp = closestPoint(bx, by, wx, wy, ww, wh);
+    let dx = bx - cp.x;
+    let dy = by - cp.y;
+    let distSq = dx * dx + dy * dy;
+
+    if (distSq >= BALL_R * BALL_R || distSq < 1e-20) {
+      return { bx, by, bvx, bvy, svx, svy };
+    }
+
+    let dist = Math.sqrt(distSq);
+    let relVn = (bvx - svx) * nx + (bvy - svy) * ny;
+
+    if (relVn >= 0) {
+      return { bx, by, bvx, bvy, svx, svy };
+    }
+
+    let j = -2 * relVn / (1 / BALL_M + 1 / SQ_M);
+    bvx += (j / BALL_M) * nx;
+    bvy += (j / BALL_M) * ny;
+    svx -= (j / SQ_M) * nx;
+    svy -= (j / SQ_M) * ny;
+
+    let pen = BALL_R - dist;
+    bx += nx * pen;
+    by += ny * pen;
+
+    return { bx, by, bvx, bvy, svx, svy };
+  }
+
+  function resolveFieldWalls(bx, by, bvx, bvy, svx, svy) {
+    let result = { bx, by, bvx, bvy, svx, svy };
+
+    if (result.bx - BALL_R < 0) {
+      result.bx = BALL_R;
+      result.bvx = Math.abs(result.bvx);
+    }
+    if (result.bx + BALL_R > W) {
+      result.bx = W - BALL_R;
+      result.bvx = -Math.abs(result.bvx);
+    }
+    if (result.by - BALL_R < 0) {
+      result.by = BALL_R;
+      result.bvy = Math.abs(result.bvy);
+    }
+    if (result.by + BALL_R > H) {
+      result.by = H - BALL_R;
+      result.bvy = -Math.abs(result.bvy);
+    }
+
+    if (square.x - SQ_HALF < 0) {
+      square.x = SQ_HALF;
+      square.vx = Math.abs(square.vx);
+    }
+    if (square.x + SQ_HALF > W) {
+      square.x = W - SQ_HALF;
+      square.vx = -Math.abs(square.vx);
+    }
+    if (square.y - SQ_HALF < 0) {
+      square.y = SQ_HALF;
+      square.vy = Math.abs(square.vy);
+    }
+    if (square.y + SQ_HALF > H) {
+      square.y = H - SQ_HALF;
+      square.vy = -Math.abs(square.vy);
+    }
+
+    return result;
+  }
+
+  function update(dt) {
+    let steps = SUBSTEPS;
+    let subDt = dt / steps;
+
+    for (let s = 0; s < steps; s++) {
+      ball.x += ball.vx * subDt;
+      ball.y += ball.vy * subDt;
+      square.x += square.vx * subDt;
+      square.y += square.vy * subDt;
+
+      ball.x = wrap(ball.x);
+      ball.y = wrap(ball.y);
+      square.x = wrap(square.x);
+      square.y = wrap(square.y);
+
+      let bx = ball.x, by = ball.y;
+      let bvx = ball.vx, bvy = ball.vy;
+      let svx = square.vx, svy = square.vy;
+      let cx = square.x, cy = square.y;
+
+      let ileft = cx - HOLE_HALF;
+      let iright = cx + HOLE_HALF;
+      let itop = cy - HOLE_HALF;
+      let ibottom = cy + HOLE_HALF;
+      let oleft = cx - SQ_HALF;
+      let oright = cx + SQ_HALF;
+      let otop = cy - SQ_HALF;
+      let obottom = cy + SQ_HALF;
+
+      let result;
+
+      result = resolveBallSquare(bx, by, bvx, bvy, svx, svy, 0, 1, ileft, itop, iright - ileft, 1);
+      bx = result.bx; by = result.by; bvx = result.bvx; bvy = result.bvy; svx = result.svx; svy = result.svy;
+
+      result = resolveBallSquare(bx, by, bvx, bvy, svx, svy, 0, -1, iright, ibottom, ileft - iright, 1);
+      bx = result.bx; by = result.by; bvx = result.bvx; bvy = result.bvy; svx = result.svx; svy = result.svy;
+
+      result = resolveBallSquare(bx, by, bvx, bvy, svx, svy, 1, 0, ileft, itop, 1, ibottom - itop);
+      bx = result.bx; by = result.by; bvx = result.bvx; bvy = result.bvy; svx = result.svx; svy = result.svy;
+
+      result = resolveBallSquare(bx, by, bvx, bvy, svx, svy, -1, 0, iright, itop, 1, ibottom - itop);
+      bx = result.bx; by = result.by; bvx = result.bvx; bvy = result.bvy; svx = result.svx; svy = result.svy;
+
+      result = resolveBallSquare(bx, by, bvx, bvy, svx, svy, 0, 1, oleft, otop, oright - oleft, 1);
+      bx = result.bx; by = result.by; bvx = result.bvx; bvy = result.bvy; svx = result.svx; svy = result.svy;
+
+      result = resolveBallSquare(bx, by, bvx, bvy, svx, svy, 0, -1, oleft, obottom, oright - oleft, 1);
+      bx = result.bx; by = result.by; bvx = result.bvx; bvy = result.bvy; svx = result.svx; svy = result.svy;
+
+      result = resolveBallSquare(bx, by, bvx, bvy, svx, svy, 1, 0, oleft, otop, 1, obottom - otop);
+      bx = result.bx; by = result.by; bvx = result.bvx; bvy = result.bvy; svx = result.svx; svy = result.svy;
+
+      result = resolveBallSquare(bx, by, bvx, bvy, svx, svy, -1, 0, oright, otop, 1, obottom - otop);
+      bx = result.bx; by = result.by; bvx = result.bvx; bvy = result.bvy; svx = result.svx; svy = result.svy;
+
+      ball.x = bx; ball.y = by;
+      ball.vx = bvx; ball.vy = bvy;
+      square.vx = svx; square.vy = svy;
+
+      result = resolveFieldWalls(bx, by, bvx, bvy, svx, svy);
+      ball.x = result.bx; ball.y = result.by;
+      ball.vx = result.bvx; ball.vy = result.bvy;
+      square.vx = result.svx; square.vy = result.svy;
+    }
+  }
+
+  function render() {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.strokeStyle = '#1a1a1a';
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i < W; i += 64) {
+      ctx.beginPath();
+      ctx.moveTo(i, 0);
+      ctx.lineTo(i, H);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, i);
+      ctx.lineTo(W, i);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = '#333';
+    ctx.fillRect(square.x - SQ_HALF, square.y - SQ_HALF, SQ_SIZE, SQ_SIZE);
+
+    ctx.fillStyle = '#000';
+    ctx.fillRect(square.x - HOLE_HALF, square.y - HOLE_HALF, HOLE_SIZE, HOLE_SIZE);
+
+    ctx.strokeStyle = '#555';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(square.x - SQ_HALF, square.y - SQ_HALF, SQ_SIZE, SQ_SIZE);
+
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, BALL_R, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#aaa';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.font = '12px monospace';
+    ctx.fillStyle = '#555';
+    ctx.fillText('ball: (' + ball.x.toFixed(1) + ', ' + ball.y.toFixed(1) + ')  v=' + Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy).toFixed(1) + ' px/s', 10, 16);
+    ctx.fillText('sq: (' + square.x.toFixed(1) + ', ' + square.y.toFixed(1) + ')  v=' + Math.sqrt(square.vx * square.vx + square.vy * square.vy).toFixed(1) + ' px/s', 10, 32);
+  }
+
+  function loop() {
+    update(DT);
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  loop();
+</script>
+</body>
+</html>
