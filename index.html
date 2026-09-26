@@ -198,6 +198,24 @@
 
 		<div class="card best">
 			<div class="row">
+				<span class="name"><a class="file" href="01-space-bunny-Alpha.html">01-space-bunny-Alpha.html</a></span>
+				<span class="tag best">Strongest in the set</span>
+				<span class="tag ok">Exact conservation</span>
+				<span class="tag ok">No tunneling</span>
+				<span class="tag ok">Rotation</span>
+			</div>
+			<div class="desc">The ball is stored in the square's <em>local</em> frame, so the 1024² torus is applied to the frame position alone — the classic "square1 wrap-xy" bug cannot happen by construction. Contacts go through a proper two-normal impulse solve (one wall and a corner share a single 2×2 <em>K</em> matrix) with the correct hole inertia <em>I = ρ(A⁴−a⁴)/6 = 8333.33</em>, and every sub-step is shortened by a <code>limit()</code> pre-advance clamp, so tunneling is impossible. The HUD's ΣKE, Σp and drift figures are the true invariants, not approximations.</div>
+			<ul class="issues">
+				<li>Measured headless over 20 000 random kicks (≤ 1878 px/s, rotation free): ΣKE drift ≤ 7.7e-14 %, |Σp| drift ≤ 6e-11, ball centre never passes |q| = 45.000000000000. Angular momentum about the system COM is exact for wall-only contacts and shifts only at asymmetric two-point corner contacts, which is the correct answer there — a 2-point contact's impulses do not pass through the COM.</li>
+				<li><b>Kick leaves the drift readout stale</b> — <code>kick()</code> injects energy but never re-baselines <code>ke0</code> (drag, reset and the rotation toggle all do), so "KE drift" carries a permanent offset after any kick or spacebar press.</li>
+				<li>Each contact burns ~23 extra sub-steps: the ball closes on the wall geometrically (60 % of the remaining gap per step) until it is within <code>EPS = 1e-9</code> of the rim, where the reflection is exact. No wall-clock cost, but it eats the <code>MAX_STEPS = 400</code> budget — a &gt;10⁵ px/s ball would truncate the frame instead of resolving (unreachable; the drag and kick caps are 1400 / 660).</li>
+				<li>Physics costs 0.5 µs per frame; the only real per-frame work is <code>updateHud()</code> rebuilding a 12-row <code>innerHTML</code> string 60×/s. Toggling the checkbox off zeroes ω, which silently discards the rotational KE (the HUD re-bases, so it is not reported as drift).</li>
+				<li>Fixed 1024² backing store with no DPR scaling — same limitation as the rest of the set.</li>
+			</ul>
+		</div>
+
+		<div class="card best">
+			<div class="row">
 				<span class="name"><a class="file" href="0-GPT56luna.html">0-GPT56luna.html</a></span>
 				<span class="tag best">Clean rigid body</span>
 				<span class="tag ok">Wrap-aware</span>

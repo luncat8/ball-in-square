@@ -10,6 +10,11 @@ Ask LLM:
 read task.md and implement in index.html
 ```
 
+then ask (if all ***ok***):
+```
+read last commit, analyze new test result in comparison with best previous (read index) and add new it to index.html same as other models results.
+note: visually new result looks ***ok**, no wrong behavior found by my eye, but i could miss something```
+
 ### tasks
 
 task 0 is easy - most LLM solve it somehow and do it fast, but most solve wrong or give partial solution. 

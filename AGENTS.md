@@ -1,4 +1,6 @@
 
-analyze new implementations - we interesting in correctness of physics and performance, then code style. be short.
+analyze new implementations - we interesting in correctness of physics and performance, then code style. be short. Your task is compare results, but NOT to refactor or fix architecture of results (unless user ask).
 
-add to index.html
+read index and best previous to understand references
+
+add new to index.html
