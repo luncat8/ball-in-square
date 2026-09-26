@@ -2,6 +2,16 @@
 
 good looking task to compare local LLM in coding.
 
+### quick start:
+
+copy folder test/ to new location.
+Ask LLM:
+```
+read task.md and implement in index.html
+```
+
+### tasks
+
 task 0 is easy - most LLM solve it somehow and do it fast, but most solve wrong or give partial solution. 
 
 task 01 for creativity testing
@@ -14,6 +24,7 @@ task 01 for creativity testing
 
 example of low-tier LLM reasoning-dots3-part1.txt
 
+
 ### this repository
 
 https://github.com/luncat8/ball-in-square.git
@@ -21,7 +32,7 @@ https://github.com/luncat8/ball-in-square.git
 ## draft prompt
 
 ### 0 v2026.08.03
-
+```
 game field 1024*1024 xy-wrap
 object square1 200*200px has square hole1 100*100 centered (50px walls). square1 mass = 1
 implement checkbox that toggle square1 rotation ( keep moment of inertia ).
@@ -44,15 +55,16 @@ square1 problem with wrap-xy
 
 
 - checkbox toggles rotation. off: locked rotation, free translation. on: free rotation+translation, moment of inertia computed analytically for shape with hole
-
+```
 ### 0d more difficult - allow hole free rotation
 
+```
 add checkbox that allow hole1 rotation related to parent square1, similar as if was inside ball bearing. mass of partthat rotating along with hole is 0.5 of square1
-
+```
 
 ### 01 add sound synth
 
-
+```
 '|' mean radio buttons to select one
 internal hole1 corners are 0,1,2,3
 
@@ -63,15 +75,16 @@ phase same (no effect) | dDistance from ball to internal hole1 corner 0 and 2
 
 
 think what else synth modes may be interesting, implement if found good.
-
+```
 ### 015
 
+```
 new mode:
 	center is tonic, hole1 edges -> 4 scales = pentatonic
 	dist from ball to center and hole1 edges produce slide tone from tonic to 4 tones.
 	not a polyphony, but slide.
 	because most time ball it between them - need proper easing function like hermeet or something else with locking last tone until some distance and then do musical slide with speed corresponding of ball change distance to edge.
-
+```
 
 ## reasoning analysis
 

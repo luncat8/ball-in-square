@@ -1,0 +1,6 @@
+49 steps · $0.00
+In 51,843 · Out 70,701 · Reason 0
+Cache R 3,780,856 · W 0 · Hit Rate 98.6%
+727 sec
+
+actually default use reasoning but count 0 is bug in kilo.

@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>square1 / hole1 / ball - 1024x1024 wrap xy</title>
+<style>
+	:root { color-scheme: dark; }
+	* { box-sizing: border-box; }
+	body {
+		margin: 0;
+		padding: 14px;
+		background: #06080b;
+		color: #c6d3e2;
+		font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+		display: flex;
+		justify-content: center;
+		user-select: none;
+	}
+	#app { display: flex; flex-direction: column; gap: 9px; align-items: center; }
+	#c {
+		display: block;
+		width: min(1024px, 94vw);
+		height: auto;
+		aspect-ratio: 1 / 1;
+		background: #0a0e13;
+		border: 1px solid #1c2632;
+		border-radius: 3px;
+		cursor: grab;
+		touch-action: none;
+	}
+	#c.drag { cursor: grabbing; }
+	#panel { display: flex; flex-wrap: wrap; gap: 7px 16px; align-items: center; justify-content: center; }
+	label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+	input { width: 14px; height: 14px; accent-color: #5fa8ff; cursor: pointer; margin: 0; }
+	button {
+		background: #121a23;
+		color: #c6d3e2;
+		border: 1px solid #26323f;
+		border-radius: 3px;
+		padding: 4px 9px;
+		font: inherit;
+		cursor: pointer;
+	}
+	button:hover { background: #1a242f; }
+	#hud {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+		gap: 0 18px;
+		width: min(1024px, 94vw);
+		color: #7f93a8;
+	}
+	#hud b { color: #dbe6f2; font-weight: 400; }
+	.ok { color: #64dfa0; }
+	.warn { color: #ffb454; }
+	.acc { color: #7fb6ff; }
+</style>
+</head>
+<body>
+<div id="app">
+	<canvas id="c" width="1024" height="1024"></canvas>
+	<div id="panel">
+		<label><input type="checkbox" id="rot"> square1 rotation <b id="rotState">locked</b></label>
+		<button id="kick">kick ball (space)</button>
+		<button id="reset">reset (r)</button>
+		<button id="pause">pause (p)</button>
+		<span>drag square1 to throw it &middot; ball bounces off hole1 walls only</span>
+	</div>
+	<div id="hud"></div>
+</div>
+<script>
+const W = 1024, H = 1024, TAU = Math.PI * 2, PI = Math.PI;
+const A_OUT = 200, A_IN = 100;
+const HALF_OUT = A_OUT / 2, HALF_IN = A_IN / 2, WALL = HALF_OUT - HALF_IN;
+const AREA = A_OUT * A_OUT - A_IN * A_IN;
+const MASS = 1;
+const RHO = MASS / AREA;
+const INERTIA = RHO * (Math.pow(A_OUT, 4) - Math.pow(A_IN, 4)) / 6;
+const BR = 5, BM = 1;
+const LIM = HALF_IN - BR;
+const EPS = 1e-9;
+const DT = 1 / 480;
+const MAX_STEPS = 400;
+const MAX_DRAG_V = 1400;
+
+const box = { x: W / 2, y: H / 2, vx: 0, vy: 0, a: 0, w: 0, I: INERTIA };
+const ball = { x: 0, y: 0, wx: 0, wy: 0 };
+
+let rotate = false, paused = false, ke0 = 0, prev = performance.now();
+
+const cvs = document.getElementById('c');
+const ctx = cvs.getContext('2d');
+const hud = document.getElementById('hud');
+const rotBox = document.getElementById('rot');
+const rotState = document.getElementById('rotState');
+const pauseBtn = document.getElementById('pause');
+
+function wrap(v, s) { return ((v % s) + s) % s; }
+function wrapd(d, s) { d = wrap(d, s); return d > s / 2 ? d - s : d; }
+function ballWorld() {
+	const c = Math.cos(box.a), s = Math.sin(box.a);
+	return {
+		x: box.x + c * ball.x - s * ball.y,
+		y: box.y + s * ball.x + c * ball.y,
+		vx: box.vx + ball.wx,
+		vy: box.vy + ball.wy
+	};
+}
+
+function seat() {
+	if (ball.x > LIM) ball.x = LIM; else if (ball.x < -LIM) ball.x = -LIM;
+	if (ball.y > LIM) ball.y = LIM; else if (ball.y < -LIM) ball.y = -LIM;
+}
+
+function solveJ(K, vn) {
+	const b0 = -2 * vn[0];
+	if (vn.length === 1) {
+		const j = b0 / K[0][0];
+		return [j > 0 ? j : 0];
+	}
+	const a = K[0][0], b = K[0][1], d = K[1][1];
+	const det = a * d - b * b;
+	let j0, j1;
+	if (Math.abs(det) < 1e-12) {
+		j0 = 0;
+		j1 = -2 * vn[1] / d;
+	} else {
+		j0 = (b0 * d - b * (-2 * vn[1])) / det;
+		j1 = (a * (-2 * vn[1]) - b * b0) / det;
+	}
+	if (j0 < 0) { j0 = 0; j1 = -2 * vn[1] / d; }
+	if (j1 < 0) { j1 = 0; j0 = b0 / a; }
+	if (j0 < 0) j0 = 0;
+	if (j1 < 0) j1 = 0;
+	return [j0, j1];
+}
+
+function resolve() {
+	const hitX = ball.x >= LIM - EPS || ball.x <= -LIM + EPS;
+	const hitY = ball.y >= LIM - EPS || ball.y <= -LIM + EPS;
+	if (!hitX && !hitY) return;
+	const lx = hitX ? (ball.x > 0 ? -1 : 1) : 0;
+	const ly = hitY ? (ball.y > 0 ? -1 : 1) : 0;
+	const c = Math.cos(box.a), s = Math.sin(box.a);
+	const nw = [];
+	if (hitX) nw.push({ x: c * lx, y: s * lx });
+	if (hitY) nw.push({ x: -s * ly, y: c * ly });
+	const clx = ball.x - lx * BR, cly = ball.y - ly * BR;
+	const rwx = c * clx - s * cly, rwy = s * clx + c * cly;
+	const relx = ball.wx + box.w * rwy, rely = ball.wy - box.w * rwx;
+	const vn = [];
+	let approaching = false;
+	for (let a = 0; a < nw.length; a++) {
+		const v = relx * nw[a].x + rely * nw[a].y;
+		vn.push(v);
+		if (v < 0) approaching = true;
+	}
+	if (!approaching) return;
+
+	const invI = rotate ? 1 / box.I : 0;
+	const inv = 1 / BM + 1 / MASS;
+	const K = [[0, 0], [0, 0]];
+	for (let a = 0; a < nw.length; a++) {
+		const ra = rwx * nw[a].y - rwy * nw[a].x;
+		for (let b = 0; b < nw.length; b++) {
+			const rb = rwx * nw[b].y - rwy * nw[b].x;
+			K[a][b] = (nw[a].x * nw[b].x + nw[a].y * nw[b].y) * inv + rb * ra * invI;
+		}
+	}
+	const j = solveJ(K, vn);
+	let px = 0, py = 0;
+	for (let a = 0; a < nw.length; a++) { px += j[a] * nw[a].x; py += j[a] * nw[a].y; }
+	ball.wx += px * inv;
+	ball.wy += py * inv;
+	box.vx -= px / MASS;
+	box.vy -= py / MASS;
+	box.w -= (rwx * py - rwy * px) * invI;
+}
+
+function limit(h, dq, q) {
+	const sgn = q >= 0 ? 1 : -1;
+	const gap = sgn * LIM - q;
+	if (gap <= EPS) return h;
+	const rate = dq * sgn;
+	if (rate <= 1e-9) return h;
+	const t = 0.6 * gap / rate;
+	if (t >= h) return h;
+	return t < 1e-7 ? h : t;
+}
+
+function substep(maxH) {
+	seat();
+	resolve();
+	const c = Math.cos(box.a), s = Math.sin(box.a);
+	const rlx = c * ball.wx + s * ball.wy;
+	const rly = -s * ball.wx + c * ball.wy;
+	let h = limit(maxH, rlx + box.w * ball.y, ball.x);
+	h = limit(h, rly - box.w * ball.x, ball.y);
+	const cw = Math.cos(box.w * h), sw = Math.sin(box.w * h);
+	const tx = ball.x + h * rlx, ty = ball.y + h * rly;
+	ball.x = cw * tx + sw * ty;
+	ball.y = -sw * tx + cw * ty;
+	box.a += box.w * h;
+	if (box.a > PI) box.a -= TAU; else if (box.a < -PI) box.a += TAU;
+	box.x = wrap(box.x + box.vx * h, W);
+	box.y = wrap(box.y + box.vy * h, H);
+	seat();
+	resolve();
+	return h;
+}
+
+function advance(dt) {
+	let rem = dt, n = 0;
+	while (rem > 1e-12 && n < MAX_STEPS) {
+		const h = substep(Math.min(rem, DT));
+		rem -= h;
+		n++;
+	}
+}
+
+function kinetic() {
+	const ux = box.vx + ball.wx, uy = box.vy + ball.wy;
+	let ke = 0.5 * MASS * (box.vx * box.vx + box.vy * box.vy) + 0.5 * BM * (ux * ux + uy * uy);
+	if (rotate) ke += 0.5 * box.I * box.w * box.w;
+	return ke;
+}
+
+function momentum() {
+	return { x: (MASS + BM) * box.vx + BM * ball.wx, y: (MASS + BM) * box.vy + BM * ball.wy };
+}
+
+function reset() {
+	box.x = W / 2; box.y = H / 2; box.vx = 0; box.vy = 0; box.a = 0; box.w = 0;
+	ball.x = 0; ball.y = 0; ball.wx = 180; ball.wy = 90;
+	prev = performance.now(); ke0 = kinetic();
+}
+
+function kick() {
+	const a = Math.random() * TAU;
+	const sp = 240 + Math.random() * 420;
+	ball.wx = Math.cos(a) * sp;
+	ball.wy = Math.sin(a) * sp;
+}
+
+function drawSquare(x, y, a) {
+	ctx.save();
+	ctx.translate(x, y);
+	ctx.rotate(a);
+	ctx.beginPath();
+	ctx.rect(-HALF_OUT, -HALF_OUT, A_OUT, A_OUT);
+	ctx.rect(-HALF_IN, -HALF_IN, A_IN, A_IN);
+	ctx.fillStyle = 'rgba(84,150,255,0.16)';
+	ctx.fill('evenodd');
+	ctx.lineWidth = 3;
+	ctx.strokeStyle = '#4f8fe0';
+	ctx.beginPath();
+	ctx.rect(-HALF_OUT, -HALF_OUT, A_OUT, A_OUT);
+	ctx.stroke();
+	ctx.strokeStyle = '#a6d2ff';
+	ctx.lineWidth = 2;
+	ctx.beginPath();
+	ctx.rect(-HALF_IN, -HALF_IN, A_IN, A_IN);
+	ctx.stroke();
+	ctx.restore();
+}
+
+function drawBall(x, y, vx, vy) {
+	ctx.beginPath();
+	ctx.arc(x, y, BR, 0, TAU);
+	ctx.fillStyle = '#ffcb5c';
+	ctx.fill();
+	ctx.lineWidth = 1;
+	ctx.strokeStyle = '#fff0cc';
+	ctx.stroke();
+	ctx.beginPath();
+	ctx.moveTo(x, y);
+	ctx.lineTo(x + vx * 0.12, y + vy * 0.12);
+	ctx.lineWidth = 2;
+	ctx.strokeStyle = 'rgba(255,203,92,0.5)';
+	ctx.stroke();
+}
+
+function draw() {
+	ctx.setTransform(1, 0, 0, 1, 0, 0);
+	ctx.fillStyle = '#0a0e13';
+	ctx.fillRect(0, 0, W, H);
+	ctx.lineWidth = 1;
+	ctx.strokeStyle = '#111a24';
+	ctx.beginPath();
+	for (let i = 128; i < W; i += 128) { ctx.moveTo(i + 0.5, 0); ctx.lineTo(i + 0.5, H); }
+	for (let j = 128; j < H; j += 128) { ctx.moveTo(0, j + 0.5); ctx.lineTo(W, j + 0.5); }
+	ctx.stroke();
+	ctx.setLineDash([6, 8]);
+	ctx.strokeStyle = '#22303f';
+	ctx.beginPath();
+	ctx.moveTo(0.5, 0); ctx.lineTo(0.5, H);
+	ctx.moveTo(0, 0.5); ctx.lineTo(W, 0.5);
+	ctx.stroke();
+	ctx.setLineDash([]);
+
+	const bw = ballWorld();
+	const bx = wrap(bw.x, W), by = wrap(bw.y, H);
+	for (let ix = -1; ix <= 1; ix++) {
+		for (let iy = -1; iy <= 1; iy++) {
+			ctx.save();
+			ctx.translate(ix * W, iy * H);
+			drawSquare(box.x, box.y, box.a);
+			drawBall(bx, by, bw.vx, bw.vy);
+			ctx.restore();
+		}
+	}
+	ctx.font = '12px ui-monospace, monospace';
+	ctx.fillStyle = '#3a4c5e';
+	ctx.fillText('wrap seam', 8, 16);
+}
+
+function updateHud() {
+	const bw = ballWorld();
+	const ke = kinetic();
+	const drift = ke0 > 0 ? (ke - ke0) / ke0 * 100 : 0;
+	const p = momentum();
+	const dOk = Math.abs(drift) < 0.05 ? 'ok' : 'warn';
+	const rows = [
+		['field', '<b>' + W + 'x' + H + '</b> wrap xy'],
+		['square1', '<b>' + A_OUT + 'x' + A_OUT + '</b>  hole1 <b>' + A_IN + 'x' + A_IN + '</b>  wall ' + WALL + '  m=1'],
+		['ball', 'd=' + BR * 2 + '  m=1  inside hole1 walls only'],
+		['I analytic', '<b class="acc">' + box.I.toFixed(4) + '</b> px2*m (kept in both modes)'],
+		['rotation', rotate ? '<span class="ok">free</span>  1/I = ' + (1 / box.I).toExponential(3) : '<span class="warn">locked</span>  1/I = 0, free translation'],
+		['ball local', 'x <b>' + ball.x.toFixed(4) + '</b>  y <b>' + ball.y.toFixed(4) + '</b>  (|q| <= ' + LIM + ')'],
+		['ball speed', '<b>' + Math.hypot(bw.vx, bw.vy).toFixed(4) + '</b> px/s'],
+		['square1 speed', '<b>' + Math.hypot(box.vx, box.vy).toFixed(4) + '</b> px/s'],
+		['square1 omega', '<b>' + (box.w * 180 / PI).toFixed(4) + '</b> deg/s'],
+		['KE total', '<b>' + ke.toFixed(4) + '</b>'],
+		['KE drift', '<b class="' + dOk + '">' + (drift >= 0 ? '+' : '') + drift.toExponential(2) + '%</b> since last input'],
+		['|P| total', '<b>' + Math.hypot(p.x, p.y).toFixed(9) + '</b> px*m/s']
+	];
+	let h = '';
+	for (const r of rows) h += '<div>' + r[0] + ': ' + r[1] + '</div>';
+	hud.innerHTML = h;
+}
+
+function frame(now) {
+	let dt = (now - prev) / 1000;
+	prev = now;
+	if (dt > 0.1) dt = 0.1;
+	if (!paused) advance(dt);
+	draw();
+	updateHud();
+	requestAnimationFrame(frame);
+}
+
+let dragging = false, lastPX = 0, lastPY = 0, lastPT = 0;
+
+function toWorld(ev) {
+	const r = cvs.getBoundingClientRect();
+	return {
+		x: wrap((ev.clientX - r.left) * (W / r.width), W),
+		y: wrap((ev.clientY - r.top) * (H / r.height), H)
+	};
+}
+
+cvs.addEventListener('pointerdown', ev => {
+	dragging = true;
+	cvs.setPointerCapture(ev.pointerId);
+	cvs.classList.add('drag');
+	const p = toWorld(ev);
+	lastPX = p.x; lastPY = p.y; lastPT = performance.now();
+});
+
+cvs.addEventListener('pointermove', ev => {
+	if (!dragging) return;
+	const p = toWorld(ev);
+	const now = performance.now();
+	const mdt = Math.min(Math.max((now - lastPT) / 1000, 1 / 240), 0.05);
+	const dx = wrapd(p.x - lastPX, W), dy = wrapd(p.y - lastPY, H);
+	lastPX = p.x; lastPY = p.y; lastPT = now;
+	box.x = p.x; box.y = p.y;
+	let vx = dx / mdt, vy = dy / mdt;
+	const sp = Math.hypot(vx, vy);
+	if (sp > MAX_DRAG_V) { vx *= MAX_DRAG_V / sp; vy *= MAX_DRAG_V / sp; }
+	box.vx = vx; box.vy = vy;
+});
+
+function endDrag() {
+	if (!dragging) return;
+	dragging = false;
+	cvs.classList.remove('drag');
+	ke0 = kinetic();
+}
+
+cvs.addEventListener('pointerup', endDrag);
+cvs.addEventListener('pointercancel', endDrag);
+
+rotBox.addEventListener('change', () => {
+	rotate = rotBox.checked;
+	if (!rotate) box.w = 0;
+	rotState.textContent = rotate ? 'free' : 'locked';
+	rotState.className = rotate ? 'ok' : '';
+	ke0 = kinetic();
+});
+
+document.getElementById('kick').addEventListener('click', kick);
+document.getElementById('reset').addEventListener('click', reset);
+pauseBtn.addEventListener('click', () => {
+	paused = !paused;
+	pauseBtn.textContent = paused ? 'resume (p)' : 'pause (p)';
+});
+
+addEventListener('keydown', ev => {
+	const k = ev.key.toLowerCase();
+	if (k === ' ' || ev.code === 'Space') { ev.preventDefault(); kick(); }
+	else if (k === 'r') reset();
+	else if (k === 'p') pauseBtn.click();
+});
+
+reset();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
