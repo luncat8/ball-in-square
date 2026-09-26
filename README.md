@@ -24,6 +24,7 @@ read last commit, analyze the new result in comparison with the best previous (r
 and add it to index.html the same as the other model results.
 note: visually the new result looks ***ok**, no wrong behavior found by my eye, but i could miss something
 ```
+(i recommend ask SAME model to write comparison - and this will be addition test of can model compare and correct)
 
 the analyst runs the harness first — it prints the file against the `best` entry of the same round:
 
