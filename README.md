@@ -2,20 +2,39 @@
 
 good looking task to compare local LLM in coding.
 
+### layout
+
+| path | what it is |
+|---|---|
+| `task/` | the folder you hand to the LLM under test: `task.md` + empty `index.html`. nothing else. |
+| `test/` | headless verification harness + `results.{json,md}`. analyst only. |
+| `index.html` | comparison board, one card per result. |
+| `NN_model.html` | results, in the repo root. |
+
 ### quick start:
 
-copy folder test/ to new location.
-Ask LLM:
+copy `task/` to a new location, then ask the LLM:
 ```
 read task.md and implement in index.html
 ```
 
-then ask (if all ***ok***):
+drop the resulting file into the repo root as `NN_model-name.html`, then ask (if all ***ok***):
 ```
-read last commit, analyze new test result in comparison with best previous (read index) and add new it to index.html same as other models results.
-note: visually new result looks ***ok**, no wrong behavior found by my eye, but i could miss something```
+read last commit, analyze the new result in comparison with the best previous (read index.html),
+and add it to index.html the same as the other model results.
+note: visually the new result looks ***ok**, no wrong behavior found by my eye, but i could miss something
+```
+
+the analyst runs the harness first — it prints the file against the `best` entry of the same round:
+
+```
+node test/run.js 01_model.html --vs auto
+```
+
+see `AGENTS.md` for the analyst workflow and `test/README.md` for the harness.
 
 ### tasks
+
 
 task 0 is easy - most LLM solve it somehow and do it fast, but most solve wrong or give partial solution. 
 

@@ -1,13 +1,17 @@
 {
  "seconds": 6,
+ "hv": "2",
  "I_REF": 8333.333333333332,
  "LIM_REF": 45,
- "generated": "2026-09-26T12:05:00.450Z",
+ "generated": "2026-09-26T12:37:21.601Z",
  "results": [
   {
-   "base": "0!_claude_opus48t.html",
+   "base": "0_laguna21.html",
+   "mtime": 1785722749000,
+   "seconds": 6,
+   "hv": "2",
    "rot": {
-    "file": "0!_claude_opus48t.html",
+    "file": "0_laguna21.html",
     "rotate": false,
     "checks": [
      {
@@ -30,9 +34,9 @@
      },
      {
       "name": "ball contained in hole1",
-      "status": "pass",
-      "value": 45.36380006937543,
-      "detail": "max max(|dx|,|dy|) 45.364 px vs limit 45 (overshoot 0.36 px), centre calibrated by median, ball range 90x90"
+      "status": "warn",
+      "value": 48.849752776616555,
+      "detail": "max max(|dx|,|dy|) 48.850 px vs limit 45 (overshoot 3.85 px), centre calibrated by median, ball range 90x90"
      },
      {
       "name": "no position teleport",
@@ -42,27 +46,164 @@
      },
      {
       "name": "time fidelity",
-      "status": "pass",
-      "value": 0.9969909146579663,
-      "detail": "expected 1.000, got 0.997"
+      "status": "fail",
+      "value": 0.4878542178356805,
+      "detail": "expected 1.000, got 0.488 — sim clock does not track wall clock"
      },
      {
       "name": "kinetic energy",
-      "status": "warn",
-      "value": 0.48985290970562856,
-      "detail": "no velocity convention reproduces a constant total energy — rel/world=0.490 rel/rot=0.490 abs/world=0.554 abs/rot=0.554 (velocities from finite differences of the rendered path)"
+      "status": "pass",
+      "value": 0,
+      "detail": "max |dKE|/KE 0.00e+0 [absolute/world reading, 342 free-flight frames; next best 0.00e+0]"
      },
      {
       "name": "linear momentum",
       "status": "fail",
-      "value": 412.3782583935596,
-      "detail": "max |dP| 4.12e+2 px*m/s"
+      "value": 1922.2504778442444,
+      "detail": "max |dP| 1.92e+3 px*m/s"
      },
      {
       "name": "angular momentum (COM)",
       "status": "warn",
-      "value": 9825.329740481002,
-      "detail": "max |dL| 9.83e+3 — expected only at asymmetric corner contacts"
+      "value": 25590.271907987495,
+      "detail": "max |dL| 2.56e+4 — expected only at asymmetric corner contacts"
+     },
+     {
+      "name": "analytic inertia",
+      "status": "skip",
+      "value": null,
+      "detail": "I not exposed"
+     }
+    ],
+    "level": "state",
+    "probe": {
+     "level": "full",
+     "src": "heuristic",
+     "ball": "ball",
+     "body": "frame",
+     "why": ""
+    },
+    "checkbox": 0,
+    "src": "state",
+    "sample": {
+     "reset": "key:r",
+     "conv": "ball-world",
+     "convConf": "high",
+     "kick": "state"
+    },
+    "calib": {
+     "dx": 3.8497527766165547,
+     "dy": 1.3429139024407277,
+     "rangeX": 90,
+     "rangeY": 89.87,
+     "applied": true
+    },
+    "fidelityByCombo": "rel/world=0.408 rel/rot=0.408 abs/world=0.488 abs/rot=0.488",
+    "metrics": {
+     "offMax": 48.849752776616555,
+     "jumpMax": 0,
+     "fidelity": 0.4878542178356805,
+     "driftKE": 0,
+     "convVel": "absolute/world",
+     "convLocal": false,
+     "dP": 1922.2504778442444,
+     "dL": 25590.271907987495,
+     "omegaMax": 0,
+     "I": 0,
+     "s0": 474.20215611638287,
+     "noState": 0,
+     "frames": 342,
+     "nearFrames": 0
+    }
+   },
+   "spin": {
+    "file": "0_laguna21.html",
+    "checks": [
+     {
+      "name": "spin coupling",
+      "status": "skip",
+      "value": null,
+      "detail": "no rotation checkbox in this file (round 0 brief) — free rotation is not implemented, so omega cannot be produced"
+     },
+     {
+      "name": "energy during spin",
+      "status": "skip",
+      "value": null,
+      "detail": "no rotation checkbox in this file (round 0 brief) — free rotation is not implemented, so omega cannot be produced"
+     }
+    ],
+    "src": "full"
+   },
+   "probe": {
+    "level": "full",
+    "src": "heuristic",
+    "ball": "ball",
+    "body": "frame",
+    "I": null
+   }
+  },
+  {
+   "base": "0_qwen36ct.html",
+   "mtime": 1788419745907.0728,
+   "seconds": 6,
+   "hv": "2",
+   "rot": {
+    "file": "0_qwen36ct.html",
+    "rotate": false,
+    "checks": [
+     {
+      "name": "loads",
+      "status": "pass",
+      "value": 1,
+      "detail": "inline script evaluated in vm"
+     },
+     {
+      "name": "runs without error",
+      "status": "pass",
+      "value": -1,
+      "detail": ""
+     },
+     {
+      "name": "state stays finite",
+      "status": "fail",
+      "value": 143,
+      "detail": "non-finite at frame 143"
+     },
+     {
+      "name": "ball contained in hole1",
+      "status": "fail",
+      "value": 58.733333333333064,
+      "detail": "max max(|dx|,|dy|) 58.733 px vs limit 45 (overshoot 13.73 px), centre calibrated by median, ball range 69x95"
+     },
+     {
+      "name": "no position teleport",
+      "status": "fail",
+      "value": 51.965300922827694,
+      "detail": "offset jump 52.0 px"
+     },
+     {
+      "name": "time fidelity",
+      "status": "pass",
+      "value": 1.0506484357578114,
+      "detail": "expected 1.000, got 1.051"
+     },
+     {
+      "name": "kinetic energy",
+      "status": "warn",
+      "value": 49.94181202215754,
+      "detail": "no velocity convention reproduces a constant total energy — rel/world=60.261 rel/rot=60.261 abs/world=49.942 abs/rot=49.942 (velocities from finite differences of the rendered path)"
+     },
+     {
+      "name": "linear momentum",
+      "status": "fail",
+      "value": 1821.9999999999895,
+      "detail": "max |dP| 1.82e+3 px*m/s"
+     },
+     {
+      "name": "angular momentum (COM)",
+      "status": "warn",
+      "value": 22194.99999999932,
+      "detail": "max |dL| 2.22e+4 — expected only at asymmetric corner contacts"
      },
      {
       "name": "analytic inertia",
@@ -74,47 +215,55 @@
     "level": "canvas",
     "probe": {
      "level": "none",
-     "src": "heuristic",
+     "src": "scalar",
+     "ball": "scalars:ballX,ballY,ballVx,ballVy",
+     "body": "scalars:sqX,sqY,sqVx,sqVy",
      "why": "no ball-like state found; add an entry to test/lib/adapters.js"
     },
     "checkbox": 0,
     "src": "canvas",
     "sample": {
-     "reset": "button:reset",
+     "reset": "key:r",
      "conv": "ball-world",
      "convConf": "canvas",
-     "kick": "button:kick"
+     "kick": "key:space"
     },
     "calib": {
-     "dx": -0.4737765858058083,
-     "dy": -0.0979681289054497,
-     "rangeX": 89.78,
-     "rangeY": 89.8,
+     "dx": -11.69999999999959,
+     "dy": 5.599999999999909,
+     "rangeX": 69.1,
+     "rangeY": 95.23,
      "applied": true
     },
-    "fidelityByCombo": "rel/world=1.696 rel/rot=1.696 abs/world=0.997 abs/rot=0.997",
+    "fidelityByCombo": "rel/world=1.617 rel/rot=1.617 abs/world=1.051 abs/rot=1.051",
     "metrics": {
-     "offMax": 45.36380006937543,
-     "jumpMax": 0,
-     "fidelity": 0.9969909146579663,
-     "driftKE": 0.48985290970562856,
-     "convVel": "relative/world",
+     "offMax": 58.733333333333064,
+     "jumpMax": 51.965300922827694,
+     "fidelity": 1.0506484357578114,
+     "driftKE": 49.94181202215754,
+     "convVel": "absolute/world",
      "convLocal": false,
-     "dP": 412.3782583935596,
-     "dL": 9825.329740481002,
+     "dP": 1821.9999999999895,
+     "dL": 22194.99999999932,
      "omegaMax": 0,
      "I": 0,
-     "s0": 136.9999999999709,
+     "s0": 261.39625092950445,
      "noState": 0,
-     "frames": 342,
-     "nearFrames": 24
+     "frames": 240,
+     "nearFrames": 22
     }
    },
    "spin": {
-    "file": "0!_claude_opus48t.html",
+    "file": "0_qwen36ct.html",
     "checks": [
      {
       "name": "spin coupling",
+      "status": "skip",
+      "value": null,
+      "detail": "state is closure-private; probe the rendered trajectory instead"
+     },
+     {
+      "name": "energy during spin",
       "status": "skip",
       "value": null,
       "detail": "state is closure-private; probe the rendered trajectory instead"
@@ -124,14 +273,19 @@
    },
    "probe": {
     "level": "none",
-    "src": "heuristic",
+    "src": "scalar",
+    "ball": "scalars:ballX,ballY,ballVx,ballVy",
+    "body": "scalars:sqX,sqY,sqVx,sqVy",
     "I": null
    }
   },
   {
-   "base": "0!_glm52max.html",
+   "base": "0_qwen36t diz.html",
+   "mtime": 1788419753823.916,
+   "seconds": 6,
+   "hv": "2",
    "rot": {
-    "file": "0!_glm52max.html",
+    "file": "0_qwen36t diz.html",
     "rotate": false,
     "checks": [
      {
@@ -154,9 +308,9 @@
      },
      {
       "name": "ball contained in hole1",
-      "status": "pass",
-      "value": 46.528295290536335,
-      "detail": "max max(|dx|,|dy|) 46.528 px vs limit 45 (overshoot 1.53 px), centre calibrated by median, ball range 90x90"
+      "status": "fail",
+      "value": 90,
+      "detail": "max max(|dx|,|dy|) 90.000 px vs limit 45 (overshoot 45.00 px), centre calibrated by median, ball range 90x90"
      },
      {
       "name": "no position teleport",
@@ -166,9 +320,9 @@
      },
      {
       "name": "time fidelity",
-      "status": "pass",
-      "value": 0.9896064869991494,
-      "detail": "expected 1.000, got 0.990"
+      "status": "fail",
+      "value": 12.281327338932822,
+      "detail": "expected 1.000, got 12.281 — sim clock does not track wall clock"
      },
      {
       "name": "kinetic energy",
@@ -178,15 +332,15 @@
      },
      {
       "name": "linear momentum",
-      "status": "pass",
-      "value": 0,
-      "detail": "max |dP| 0.00e+0 px*m/s"
+      "status": "fail",
+      "value": 1240,
+      "detail": "max |dP| 1.24e+3 px*m/s"
      },
      {
       "name": "angular momentum (COM)",
       "status": "warn",
-      "value": 6697.407509418804,
-      "detail": "max |dL| 6.70e+3 — expected only at asymmetric corner contacts"
+      "value": 3333.923551305652,
+      "detail": "max |dL| 3.33e+3 — expected only at asymmetric corner contacts"
      },
      {
       "name": "analytic inertia",
@@ -200,50 +354,56 @@
      "level": "full",
      "src": "heuristic",
      "ball": "ball",
-     "body": "sq",
+     "body": "square",
      "why": ""
     },
-    "checkbox": 4,
+    "checkbox": 0,
     "src": "state",
     "sample": {
-     "reset": "button:btnReset",
+     "reset": "key:r",
      "conv": "ball-world",
      "convConf": "high",
      "kick": "state"
     },
     "calib": {
-     "dx": 98.47170470946367,
-     "dy": 99.9697627467358,
+     "dx": 145,
+     "dy": 145,
      "rangeX": 90,
      "rangeY": 90,
      "applied": true
     },
-    "fidelityByCombo": "rel/world=1.546 rel/rot=1.546 abs/world=0.990 abs/rot=0.990",
+    "fidelityByCombo": "rel/world=12.281 rel/rot=12.281 abs/world=12.281 abs/rot=12.281",
     "metrics": {
-     "offMax": 46.528295290536335,
+     "offMax": 90,
      "jumpMax": 0,
-     "fidelity": 0.9896064869991494,
+     "fidelity": 12.281327338932822,
      "driftKE": 0,
      "convVel": "absolute/world",
      "convLocal": false,
-     "dP": 0,
-     "dL": 6697.407509418804,
-     "omegaMax": 0,
+     "dP": 1240,
+     "dL": 3333.923551305652,
+     "omegaMax": 200,
      "I": 0,
-     "s0": 136.18037646009694,
+     "s0": 620,
      "noState": 0,
      "frames": 342,
      "nearFrames": 0
     }
    },
    "spin": {
-    "file": "0!_glm52max.html",
+    "file": "0_qwen36t diz.html",
     "checks": [
      {
       "name": "spin coupling",
       "status": "skip",
       "value": null,
-      "detail": "no writable ball position or omega in state"
+      "detail": "no rotation checkbox in this file (round 0 brief) — free rotation is not implemented, so omega cannot be produced"
+     },
+     {
+      "name": "energy during spin",
+      "status": "skip",
+      "value": null,
+      "detail": "no rotation checkbox in this file (round 0 brief) — free rotation is not implemented, so omega cannot be produced"
      }
     ],
     "src": "full"
@@ -252,14 +412,17 @@
     "level": "full",
     "src": "heuristic",
     "ball": "ball",
-    "body": "sq",
+    "body": "square",
     "I": null
    }
   },
   {
-   "base": "0-GPT56luna.html",
+   "base": "0_step37f_bug_ball_escape.html",
+   "mtime": 1785725954000,
+   "seconds": 6,
+   "hv": "2",
    "rot": {
-    "file": "0-GPT56luna.html",
+    "file": "0_step37f_bug_ball_escape.html",
     "rotate": false,
     "checks": [
      {
@@ -282,9 +445,9 @@
      },
      {
       "name": "ball contained in hole1",
-      "status": "pass",
-      "value": 46.62230727180008,
-      "detail": "max max(|dx|,|dy|) 46.622 px vs limit 45 (overshoot 1.62 px), centre calibrated by median, ball range 87x89"
+      "status": "fail",
+      "value": 132.3101473567449,
+      "detail": "max max(|dx|,|dy|) 132.310 px vs limit 45 (overshoot 87.31 px), centre calibrated by median, ball range 142x137"
      },
      {
       "name": "no position teleport",
@@ -294,9 +457,146 @@
      },
      {
       "name": "time fidelity",
+      "status": "fail",
+      "value": 0.7921267563461573,
+      "detail": "expected 1.000, got 0.792 — sim clock does not track wall clock"
+     },
+     {
+      "name": "kinetic energy",
       "status": "pass",
-      "value": 0.9646467320359724,
-      "detail": "expected 1.000, got 0.965"
+      "value": 0,
+      "detail": "max |dKE|/KE 0.00e+0 [absolute/world reading, 342 free-flight frames; next best 0.00e+0]"
+     },
+     {
+      "name": "linear momentum",
+      "status": "fail",
+      "value": 948.4043122327657,
+      "detail": "max |dP| 9.48e+2 px*m/s"
+     },
+     {
+      "name": "angular momentum (COM)",
+      "status": "warn",
+      "value": 64354.183026164916,
+      "detail": "max |dL| 6.44e+4 — expected only at asymmetric corner contacts"
+     },
+     {
+      "name": "analytic inertia",
+      "status": "skip",
+      "value": null,
+      "detail": "I not exposed"
+     }
+    ],
+    "level": "state",
+    "probe": {
+     "level": "full",
+     "src": "heuristic",
+     "ball": "ball",
+     "body": "square",
+     "why": ""
+    },
+    "checkbox": 0,
+    "src": "state",
+    "sample": {
+     "reset": "key:r",
+     "conv": "ball-world",
+     "convConf": "high",
+     "kick": "state"
+    },
+    "calib": {
+     "dx": -2.366576828487723,
+     "dy": -38.142261869426875,
+     "rangeX": 141.54,
+     "rangeY": 137.34,
+     "applied": true
+    },
+    "fidelityByCombo": "rel/world=0.792 rel/rot=0.792 abs/world=0.436 abs/rot=0.436",
+    "metrics": {
+     "offMax": 132.3101473567449,
+     "jumpMax": 0,
+     "fidelity": 0.7921267563461573,
+     "driftKE": 0,
+     "convVel": "absolute/world",
+     "convLocal": false,
+     "dP": 948.4043122327657,
+     "dL": 64354.183026164916,
+     "omegaMax": 0,
+     "I": 0,
+     "s0": 620,
+     "noState": 0,
+     "frames": 342,
+     "nearFrames": 0
+    }
+   },
+   "spin": {
+    "file": "0_step37f_bug_ball_escape.html",
+    "checks": [
+     {
+      "name": "spin coupling",
+      "status": "skip",
+      "value": null,
+      "detail": "no rotation checkbox in this file (round 0 brief) — free rotation is not implemented, so omega cannot be produced"
+     },
+     {
+      "name": "energy during spin",
+      "status": "skip",
+      "value": null,
+      "detail": "no rotation checkbox in this file (round 0 brief) — free rotation is not implemented, so omega cannot be produced"
+     }
+    ],
+    "src": "full"
+   },
+   "probe": {
+    "level": "full",
+    "src": "heuristic",
+    "ball": "ball",
+    "body": "square",
+    "I": null
+   }
+  },
+  {
+   "base": "0_step37f.html",
+   "mtime": 1785722999000,
+   "seconds": 6,
+   "hv": "2",
+   "rot": {
+    "file": "0_step37f.html",
+    "rotate": false,
+    "checks": [
+     {
+      "name": "loads",
+      "status": "pass",
+      "value": 1,
+      "detail": "inline script evaluated in vm"
+     },
+     {
+      "name": "runs without error",
+      "status": "pass",
+      "value": -1,
+      "detail": ""
+     },
+     {
+      "name": "state stays finite",
+      "status": "pass",
+      "value": -1,
+      "detail": ""
+     },
+     {
+      "name": "ball contained in hole1",
+      "status": "fail",
+      "value": 510.10245593916443,
+      "detail": "max max(|dx|,|dy|) 510.102 px vs limit 45 (overshoot 465.10 px), centre calibrated by median, ball range 1017x1017"
+     },
+     {
+      "name": "no position teleport",
+      "status": "pass",
+      "value": 0,
+      "detail": ""
+     },
+     {
+      "name": "time fidelity",
+      "status": "fail",
+      "value": 59.83057950825308,
+      "detail": "expected 1.000, got 59.831 — sim clock does not track wall clock"
      },
      {
       "name": "kinetic energy",
@@ -313,14 +613,14 @@
      {
       "name": "angular momentum (COM)",
       "status": "warn",
-      "value": 22220.387347401476,
-      "detail": "max |dL| 2.22e+4 — expected only at asymmetric corner contacts"
+      "value": 355321.5986152974,
+      "detail": "max |dL| 3.55e+5 — expected only at asymmetric corner contacts"
      },
      {
       "name": "analytic inertia",
-      "status": "pass",
-      "value": 8333.333333333332,
-      "detail": "I=8333.33 vs 8333.33 (rel 0.00%)"
+      "status": "skip",
+      "value": null,
+      "detail": "I not exposed"
      }
     ],
     "level": "state",
@@ -328,11 +628,10 @@
      "level": "full",
      "src": "heuristic",
      "ball": "ball",
-     "body": "body",
+     "body": "square",
      "why": ""
     },
-    "checkbox": 1,
-    "I": 8333.333333333332,
+    "checkbox": 0,
     "src": "state",
     "sample": {
      "reset": "key:r",
@@ -341,63 +640,61 @@
      "kick": "state"
     },
     "calib": {
-     "dx": 0.4443742944862379,
-     "dy": -1.6223082718000796,
-     "rangeX": 86.94,
-     "rangeY": 89.46,
+     "dx": -1.628029512977264,
+     "dy": -0.5442200094732925,
+     "rangeX": 1016.68,
+     "rangeY": 1016.82,
      "applied": true
     },
-    "fidelityByCombo": "rel/world=1.368 rel/rot=1.368 abs/world=0.965 abs/rot=0.965",
+    "fidelityByCombo": "rel/world=84.031 rel/rot=84.031 abs/world=59.831 abs/rot=59.831",
     "metrics": {
-     "offMax": 46.62230727180008,
+     "offMax": 510.10245593916443,
      "jumpMax": 0,
-     "fidelity": 0.9646467320359724,
+     "fidelity": 59.83057950825308,
      "driftKE": 0,
      "convVel": "absolute/world",
      "convLocal": false,
      "dP": 0,
-     "dL": 22220.387347401476,
-     "omegaMax": 0,
-     "I": 8333.333333333332,
-     "s0": 484.02136819093676,
+     "dL": 355321.5986152974,
+     "omegaMax": 200,
+     "I": 0,
+     "s0": 620,
      "noState": 0,
      "frames": 342,
      "nearFrames": 0
     }
    },
    "spin": {
-    "file": "0-GPT56luna.html",
+    "file": "0_step37f.html",
     "checks": [
      {
       "name": "spin coupling",
-      "status": "pass",
-      "value": 2.180048407059273,
-      "detail": "max |omega| after an off-centre wall hit = 2.180e+0 rad/s"
+      "status": "skip",
+      "value": null,
+      "detail": "no rotation checkbox in this file (round 0 brief) — free rotation is not implemented, so omega cannot be produced"
      },
      {
       "name": "energy during spin",
-      "status": "pass",
-      "value": 2.220446049250313e-16,
-      "detail": "|dKE|/KE 2.22e-16"
+      "status": "skip",
+      "value": null,
+      "detail": "no rotation checkbox in this file (round 0 brief) — free rotation is not implemented, so omega cannot be produced"
      }
     ],
-    "src": "full",
-    "metrics": {
-     "omegaMax": 2.180048407059273,
-     "dKE": 2.220446049250313e-16,
-     "conv": "world"
-    }
+    "src": "full"
    },
    "probe": {
     "level": "full",
     "src": "heuristic",
     "ball": "ball",
-    "body": "body",
-    "I": 8333.333333333332
+    "body": "square",
+    "I": null
    }
   },
   {
    "base": "0-dots3.html",
+   "mtime": 1788694270000,
+   "seconds": 6,
+   "hv": "2",
    "rot": {
     "file": "0-dots3.html",
     "rotate": false,
@@ -537,9 +834,12 @@
    }
   },
   {
-   "base": "01!_claude48ot_c46_rot.html",
+   "base": "0-GPT56luna.html",
+   "mtime": 1788694537749.0667,
+   "seconds": 6,
+   "hv": "2",
    "rot": {
-    "file": "01!_claude48ot_c46_rot.html",
+    "file": "0-GPT56luna.html",
     "rotate": false,
     "checks": [
      {
@@ -563,8 +863,8 @@
      {
       "name": "ball contained in hole1",
       "status": "pass",
-      "value": 44.90203187111024,
-      "detail": "max max(|dx|,|dy|) 44.902 px vs limit 45 (overshoot -0.10 px), centre calibrated by median, ball range 89x90"
+      "value": 46.62230727180008,
+      "detail": "max max(|dx|,|dy|) 46.622 px vs limit 45 (overshoot 1.62 px), centre calibrated by median, ball range 87x89"
      },
      {
       "name": "no position teleport",
@@ -575,26 +875,169 @@
      {
       "name": "time fidelity",
       "status": "pass",
-      "value": 0.9969920615117399,
+      "value": 0.9646467320359724,
+      "detail": "expected 1.000, got 0.965"
+     },
+     {
+      "name": "kinetic energy",
+      "status": "pass",
+      "value": 0,
+      "detail": "max |dKE|/KE 0.00e+0 [absolute/world reading, 342 free-flight frames; next best 0.00e+0]"
+     },
+     {
+      "name": "linear momentum",
+      "status": "pass",
+      "value": 0,
+      "detail": "max |dP| 0.00e+0 px*m/s"
+     },
+     {
+      "name": "angular momentum (COM)",
+      "status": "warn",
+      "value": 22220.387347401476,
+      "detail": "max |dL| 2.22e+4 — expected only at asymmetric corner contacts"
+     },
+     {
+      "name": "analytic inertia",
+      "status": "pass",
+      "value": 8333.333333333332,
+      "detail": "I=8333.33 vs 8333.33 (rel 0.00%)"
+     }
+    ],
+    "level": "state",
+    "probe": {
+     "level": "full",
+     "src": "heuristic",
+     "ball": "ball",
+     "body": "body",
+     "why": ""
+    },
+    "checkbox": 1,
+    "I": 8333.333333333332,
+    "src": "state",
+    "sample": {
+     "reset": "key:r",
+     "conv": "ball-world",
+     "convConf": "high",
+     "kick": "state"
+    },
+    "calib": {
+     "dx": 0.4443742944862379,
+     "dy": -1.6223082718000796,
+     "rangeX": 86.94,
+     "rangeY": 89.46,
+     "applied": true
+    },
+    "fidelityByCombo": "rel/world=1.368 rel/rot=1.368 abs/world=0.965 abs/rot=0.965",
+    "metrics": {
+     "offMax": 46.62230727180008,
+     "jumpMax": 0,
+     "fidelity": 0.9646467320359724,
+     "driftKE": 0,
+     "convVel": "absolute/world",
+     "convLocal": false,
+     "dP": 0,
+     "dL": 22220.387347401476,
+     "omegaMax": 0,
+     "I": 8333.333333333332,
+     "s0": 484.02136819093676,
+     "noState": 0,
+     "frames": 342,
+     "nearFrames": 0
+    }
+   },
+   "spin": {
+    "file": "0-GPT56luna.html",
+    "checks": [
+     {
+      "name": "spin coupling",
+      "status": "pass",
+      "value": 2.180048407059273,
+      "detail": "max |omega| after an off-centre wall hit = 2.180e+0 rad/s"
+     },
+     {
+      "name": "energy during spin",
+      "status": "pass",
+      "value": 2.220446049250313e-16,
+      "detail": "|dKE|/KE 2.22e-16"
+     }
+    ],
+    "src": "full",
+    "metrics": {
+     "omegaMax": 2.180048407059273,
+     "dKE": 2.220446049250313e-16,
+     "conv": "world"
+    }
+   },
+   "probe": {
+    "level": "full",
+    "src": "heuristic",
+    "ball": "ball",
+    "body": "body",
+    "I": 8333.333333333332
+   }
+  },
+  {
+   "base": "0!_claude_opus48t.html",
+   "mtime": 1785728384715.4375,
+   "seconds": 6,
+   "hv": "2",
+   "rot": {
+    "file": "0!_claude_opus48t.html",
+    "rotate": false,
+    "checks": [
+     {
+      "name": "loads",
+      "status": "pass",
+      "value": 1,
+      "detail": "inline script evaluated in vm"
+     },
+     {
+      "name": "runs without error",
+      "status": "pass",
+      "value": -1,
+      "detail": ""
+     },
+     {
+      "name": "state stays finite",
+      "status": "pass",
+      "value": -1,
+      "detail": ""
+     },
+     {
+      "name": "ball contained in hole1",
+      "status": "pass",
+      "value": 45.36380006937543,
+      "detail": "max max(|dx|,|dy|) 45.364 px vs limit 45 (overshoot 0.36 px), centre calibrated by median, ball range 90x90"
+     },
+     {
+      "name": "no position teleport",
+      "status": "pass",
+      "value": 0,
+      "detail": ""
+     },
+     {
+      "name": "time fidelity",
+      "status": "pass",
+      "value": 0.9969909146579663,
       "detail": "expected 1.000, got 0.997"
      },
      {
       "name": "kinetic energy",
       "status": "warn",
-      "value": 0.4772683065687998,
-      "detail": "no velocity convention reproduces a constant total energy — rel/world=0.477 rel/rot=0.477 abs/world=0.483 abs/rot=0.483 (velocities from finite differences of the rendered path)"
+      "value": 0.48985290970562856,
+      "detail": "no velocity convention reproduces a constant total energy — rel/world=0.490 rel/rot=0.490 abs/world=0.554 abs/rot=0.554 (velocities from finite differences of the rendered path)"
      },
      {
       "name": "linear momentum",
       "status": "fail",
-      "value": 412.37825839373164,
+      "value": 412.3782583935596,
       "detail": "max |dP| 4.12e+2 px*m/s"
      },
      {
       "name": "angular momentum (COM)",
       "status": "warn",
-      "value": 10078.185603697011,
-      "detail": "max |dL| 1.01e+4 — expected only at asymmetric corner contacts"
+      "value": 9825.329740481002,
+      "detail": "max |dL| 9.83e+3 — expected only at asymmetric corner contacts"
      },
      {
       "name": "analytic inertia",
@@ -609,7 +1052,7 @@
      "src": "heuristic",
      "why": "no ball-like state found; add an entry to test/lib/adapters.js"
     },
-    "checkbox": 1,
+    "checkbox": 0,
     "src": "canvas",
     "sample": {
      "reset": "button:reset",
@@ -618,35 +1061,41 @@
      "kick": "button:kick"
     },
     "calib": {
-     "dx": 0.20939416380178955,
-     "dy": 0.09796812888976092,
-     "rangeX": 88.83,
+     "dx": -0.4737765858058083,
+     "dy": -0.0979681289054497,
+     "rangeX": 89.78,
      "rangeY": 89.8,
      "applied": true
     },
-    "fidelityByCombo": "rel/world=1.703 rel/rot=1.703 abs/world=0.997 abs/rot=0.997",
+    "fidelityByCombo": "rel/world=1.696 rel/rot=1.696 abs/world=0.997 abs/rot=0.997",
     "metrics": {
-     "offMax": 44.90203187111024,
+     "offMax": 45.36380006937543,
      "jumpMax": 0,
-     "fidelity": 0.9969920615117399,
-     "driftKE": 0.4772683065687998,
+     "fidelity": 0.9969909146579663,
+     "driftKE": 0.48985290970562856,
      "convVel": "relative/world",
      "convLocal": false,
-     "dP": 412.37825839373164,
-     "dL": 10078.185603697011,
+     "dP": 412.3782583935596,
+     "dL": 9825.329740481002,
      "omegaMax": 0,
      "I": 0,
      "s0": 136.9999999999709,
      "noState": 0,
      "frames": 342,
-     "nearFrames": 22
+     "nearFrames": 24
     }
    },
    "spin": {
-    "file": "01!_claude48ot_c46_rot.html",
+    "file": "0!_claude_opus48t.html",
     "checks": [
      {
       "name": "spin coupling",
+      "status": "skip",
+      "value": null,
+      "detail": "state is closure-private; probe the rendered trajectory instead"
+     },
+     {
+      "name": "energy during spin",
       "status": "skip",
       "value": null,
       "detail": "state is closure-private; probe the rendered trajectory instead"
@@ -661,9 +1110,12 @@
    }
   },
   {
-   "base": "01!_glm52m_grok45_rot.html",
+   "base": "0!_glm52max.html",
+   "mtime": 1785728883405.8887,
+   "seconds": 6,
+   "hv": "2",
    "rot": {
-    "file": "01!_glm52m_grok45_rot.html",
+    "file": "0!_glm52max.html",
     "rotate": false,
     "checks": [
      {
@@ -735,7 +1187,7 @@
      "body": "sq",
      "why": ""
     },
-    "checkbox": 5,
+    "checkbox": 4,
     "src": "state",
     "sample": {
      "reset": "button:btnReset",
@@ -744,8 +1196,8 @@
      "kick": "state"
     },
     "calib": {
-     "dx": -1.5282952905363345,
-     "dy": -0.0302372532642039,
+     "dx": 98.47170470946367,
+     "dy": 99.9697627467358,
      "rangeX": 90,
      "rangeY": 90,
      "applied": true
@@ -769,27 +1221,22 @@
     }
    },
    "spin": {
-    "file": "01!_glm52m_grok45_rot.html",
+    "file": "0!_glm52max.html",
     "checks": [
      {
       "name": "spin coupling",
-      "status": "pass",
-      "value": 2.1368167293031184,
-      "detail": "max |omega| after an off-centre wall hit = 2.137e+0 rad/s"
+      "status": "skip",
+      "value": null,
+      "detail": "no writable ball position or omega in state"
      },
      {
       "name": "energy during spin",
       "status": "skip",
-      "value": 0.0014022158352359204,
-      "detail": "I not exposed, rotational term cannot be included"
+      "value": null,
+      "detail": "no writable ball position or omega in state"
      }
     ],
-    "src": "full",
-    "metrics": {
-     "omegaMax": 2.1368167293031184,
-     "dKE": 0.0014022158352359204,
-     "conv": "world"
-    }
+    "src": "full"
    },
    "probe": {
     "level": "full",
@@ -800,147 +1247,10 @@
    }
   },
   {
-   "base": "01-space-bunny-Alpha.html",
-   "rot": {
-    "file": "01-space-bunny-Alpha.html",
-    "rotate": false,
-    "checks": [
-     {
-      "name": "loads",
-      "status": "pass",
-      "value": 1,
-      "detail": "inline script evaluated in vm"
-     },
-     {
-      "name": "runs without error",
-      "status": "pass",
-      "value": -1,
-      "detail": ""
-     },
-     {
-      "name": "state stays finite",
-      "status": "pass",
-      "value": -1,
-      "detail": ""
-     },
-     {
-      "name": "ball contained in hole1",
-      "status": "pass",
-      "value": 44.93418368482954,
-      "detail": "max max(|dx|,|dy|) 44.934 px vs limit 45 (overshoot -0.07 px), centre calibrated by median, ball range 87x90"
-     },
-     {
-      "name": "no position teleport",
-      "status": "pass",
-      "value": 0,
-      "detail": ""
-     },
-     {
-      "name": "time fidelity",
-      "status": "pass",
-      "value": 0.9642566067343984,
-      "detail": "expected 1.000, got 0.964"
-     },
-     {
-      "name": "kinetic energy",
-      "status": "pass",
-      "value": 0,
-      "detail": "max |dKE|/KE 0.00e+0 [relative/world reading, 342 free-flight frames; next best 0.00e+0]"
-     },
-     {
-      "name": "linear momentum",
-      "status": "pass",
-      "value": 0,
-      "detail": "max |dP| 0.00e+0 px*m/s"
-     },
-     {
-      "name": "angular momentum (COM)",
-      "status": "warn",
-      "value": 34242.96402668419,
-      "detail": "max |dL| 3.42e+4 — expected only at asymmetric corner contacts"
-     },
-     {
-      "name": "analytic inertia",
-      "status": "pass",
-      "value": 8333.333333333334,
-      "detail": "I=8333.33 vs 8333.33 (rel 0.00%)"
-     }
-    ],
-    "level": "state",
-    "probe": {
-     "level": "full",
-     "src": "heuristic",
-     "ball": "ball",
-     "body": "box",
-     "why": ""
-    },
-    "checkbox": 1,
-    "I": 8333.333333333334,
-    "src": "state",
-    "sample": {
-     "reset": "button:reset",
-     "conv": "ball-local",
-     "convConf": "high",
-     "kick": "state"
-    },
-    "calib": {
-     "dx": 0.4443732944866554,
-     "dy": -0.06581631517144293,
-     "rangeX": 86.94,
-     "rangeY": 89.87,
-     "applied": true
-    },
-    "fidelityByCombo": "rel/world=0.964 rel/rot=0.964 abs/world=0.598 abs/rot=0.598",
-    "metrics": {
-     "offMax": 44.93418368482954,
-     "jumpMax": 0,
-     "fidelity": 0.9642566067343984,
-     "driftKE": 0,
-     "convVel": "relative/world",
-     "convLocal": true,
-     "dP": 0,
-     "dL": 34242.96402668419,
-     "omegaMax": 0,
-     "I": 8333.333333333334,
-     "s0": 620,
-     "noState": 0,
-     "frames": 342,
-     "nearFrames": 0
-    }
-   },
-   "spin": {
-    "file": "01-space-bunny-Alpha.html",
-    "checks": [
-     {
-      "name": "spin coupling",
-      "status": "pass",
-      "value": 0.79089616257546,
-      "detail": "max |omega| after an off-centre wall hit = 7.909e-1 rad/s"
-     },
-     {
-      "name": "energy during spin",
-      "status": "warn",
-      "value": 0.00033269828812976243,
-      "detail": "|dKE|/KE 3.33e-4"
-     }
-    ],
-    "src": "full",
-    "metrics": {
-     "omegaMax": 0.79089616257546,
-     "dKE": 0.00033269828812976243,
-     "conv": "local"
-    }
-   },
-   "probe": {
-    "level": "full",
-    "src": "heuristic",
-    "ball": "ball",
-    "body": "box",
-    "I": 8333.333333333334
-   }
-  },
-  {
    "base": "01_hy3.html",
+   "mtime": 1786790536000,
+   "seconds": 6,
+   "hv": "2",
    "rot": {
     "file": "01_hy3.html",
     "rotate": false,
@@ -1080,6 +1390,9 @@
   },
   {
    "base": "01_ornith1.html",
+   "mtime": 1786788354886.5127,
+   "seconds": 6,
+   "hv": "2",
    "rot": {
     "file": "01_ornith1.html",
     "rotate": false,
@@ -1219,6 +1532,9 @@
   },
   {
    "base": "01_ornith15.html",
+   "mtime": 1788438330333.113,
+   "seconds": 6,
+   "hv": "2",
    "rot": {
     "file": "01_ornith15.html",
     "rotate": false,
@@ -1332,6 +1648,12 @@
       "status": "skip",
       "value": null,
       "detail": "no writable ball position or omega in state"
+     },
+     {
+      "name": "energy during spin",
+      "status": "skip",
+      "value": null,
+      "detail": "no writable ball position or omega in state"
      }
     ],
     "src": "ball-only"
@@ -1345,6 +1667,9 @@
   },
   {
    "base": "01_qwen38_27b_hermes.html",
+   "mtime": 1786791448496.709,
+   "seconds": 6,
+   "hv": "2",
    "rot": {
     "file": "01_qwen38_27b_hermes.html",
     "rotate": false,
@@ -1484,6 +1809,9 @@
   },
   {
    "base": "01_qwen38_27b_i4.htm",
+   "mtime": 1788419773212.007,
+   "seconds": 6,
+   "hv": "2",
    "rot": {
     "file": "01_qwen38_27b_i4.htm",
     "rotate": false,
@@ -1622,7 +1950,428 @@
    }
   },
   {
+   "base": "01-space-bunny-Alpha.html",
+   "mtime": 1790419982000,
+   "seconds": 6,
+   "hv": "2",
+   "rot": {
+    "file": "01-space-bunny-Alpha.html",
+    "rotate": false,
+    "checks": [
+     {
+      "name": "loads",
+      "status": "pass",
+      "value": 1,
+      "detail": "inline script evaluated in vm"
+     },
+     {
+      "name": "runs without error",
+      "status": "pass",
+      "value": -1,
+      "detail": ""
+     },
+     {
+      "name": "state stays finite",
+      "status": "pass",
+      "value": -1,
+      "detail": ""
+     },
+     {
+      "name": "ball contained in hole1",
+      "status": "pass",
+      "value": 44.93418368482954,
+      "detail": "max max(|dx|,|dy|) 44.934 px vs limit 45 (overshoot -0.07 px), centre calibrated by median, ball range 87x90"
+     },
+     {
+      "name": "no position teleport",
+      "status": "pass",
+      "value": 0,
+      "detail": ""
+     },
+     {
+      "name": "time fidelity",
+      "status": "pass",
+      "value": 0.9642566067343984,
+      "detail": "expected 1.000, got 0.964"
+     },
+     {
+      "name": "kinetic energy",
+      "status": "pass",
+      "value": 0,
+      "detail": "max |dKE|/KE 0.00e+0 [relative/world reading, 342 free-flight frames; next best 0.00e+0]"
+     },
+     {
+      "name": "linear momentum",
+      "status": "pass",
+      "value": 0,
+      "detail": "max |dP| 0.00e+0 px*m/s"
+     },
+     {
+      "name": "angular momentum (COM)",
+      "status": "warn",
+      "value": 34242.96402668419,
+      "detail": "max |dL| 3.42e+4 — expected only at asymmetric corner contacts"
+     },
+     {
+      "name": "analytic inertia",
+      "status": "pass",
+      "value": 8333.333333333334,
+      "detail": "I=8333.33 vs 8333.33 (rel 0.00%)"
+     }
+    ],
+    "level": "state",
+    "probe": {
+     "level": "full",
+     "src": "heuristic",
+     "ball": "ball",
+     "body": "box",
+     "why": ""
+    },
+    "checkbox": 1,
+    "I": 8333.333333333334,
+    "src": "state",
+    "sample": {
+     "reset": "button:reset",
+     "conv": "ball-local",
+     "convConf": "high",
+     "kick": "state"
+    },
+    "calib": {
+     "dx": 0.4443732944866554,
+     "dy": -0.06581631517144293,
+     "rangeX": 86.94,
+     "rangeY": 89.87,
+     "applied": true
+    },
+    "fidelityByCombo": "rel/world=0.964 rel/rot=0.964 abs/world=0.598 abs/rot=0.598",
+    "metrics": {
+     "offMax": 44.93418368482954,
+     "jumpMax": 0,
+     "fidelity": 0.9642566067343984,
+     "driftKE": 0,
+     "convVel": "relative/world",
+     "convLocal": true,
+     "dP": 0,
+     "dL": 34242.96402668419,
+     "omegaMax": 0,
+     "I": 8333.333333333334,
+     "s0": 620,
+     "noState": 0,
+     "frames": 342,
+     "nearFrames": 0
+    }
+   },
+   "spin": {
+    "file": "01-space-bunny-Alpha.html",
+    "checks": [
+     {
+      "name": "spin coupling",
+      "status": "pass",
+      "value": 0.79089616257546,
+      "detail": "max |omega| after an off-centre wall hit = 7.909e-1 rad/s"
+     },
+     {
+      "name": "energy during spin",
+      "status": "warn",
+      "value": 0.00033269828812976243,
+      "detail": "|dKE|/KE 3.33e-4"
+     }
+    ],
+    "src": "full",
+    "metrics": {
+     "omegaMax": 0.79089616257546,
+     "dKE": 0.00033269828812976243,
+     "conv": "local"
+    }
+   },
+   "probe": {
+    "level": "full",
+    "src": "heuristic",
+    "ball": "ball",
+    "body": "box",
+    "I": 8333.333333333334
+   }
+  },
+  {
+   "base": "01!_claude48ot_c46_rot.html",
+   "mtime": 1785730818007.2666,
+   "seconds": 6,
+   "hv": "2",
+   "rot": {
+    "file": "01!_claude48ot_c46_rot.html",
+    "rotate": false,
+    "checks": [
+     {
+      "name": "loads",
+      "status": "pass",
+      "value": 1,
+      "detail": "inline script evaluated in vm"
+     },
+     {
+      "name": "runs without error",
+      "status": "pass",
+      "value": -1,
+      "detail": ""
+     },
+     {
+      "name": "state stays finite",
+      "status": "pass",
+      "value": -1,
+      "detail": ""
+     },
+     {
+      "name": "ball contained in hole1",
+      "status": "pass",
+      "value": 44.90203187111024,
+      "detail": "max max(|dx|,|dy|) 44.902 px vs limit 45 (overshoot -0.10 px), centre calibrated by median, ball range 89x90"
+     },
+     {
+      "name": "no position teleport",
+      "status": "pass",
+      "value": 0,
+      "detail": ""
+     },
+     {
+      "name": "time fidelity",
+      "status": "pass",
+      "value": 0.9969920615117399,
+      "detail": "expected 1.000, got 0.997"
+     },
+     {
+      "name": "kinetic energy",
+      "status": "warn",
+      "value": 0.4772683065687998,
+      "detail": "no velocity convention reproduces a constant total energy — rel/world=0.477 rel/rot=0.477 abs/world=0.483 abs/rot=0.483 (velocities from finite differences of the rendered path)"
+     },
+     {
+      "name": "linear momentum",
+      "status": "fail",
+      "value": 412.37825839373164,
+      "detail": "max |dP| 4.12e+2 px*m/s"
+     },
+     {
+      "name": "angular momentum (COM)",
+      "status": "warn",
+      "value": 10078.185603697011,
+      "detail": "max |dL| 1.01e+4 — expected only at asymmetric corner contacts"
+     },
+     {
+      "name": "analytic inertia",
+      "status": "skip",
+      "value": null,
+      "detail": "I not exposed"
+     }
+    ],
+    "level": "canvas",
+    "probe": {
+     "level": "none",
+     "src": "heuristic",
+     "why": "no ball-like state found; add an entry to test/lib/adapters.js"
+    },
+    "checkbox": 1,
+    "src": "canvas",
+    "sample": {
+     "reset": "button:reset",
+     "conv": "ball-world",
+     "convConf": "canvas",
+     "kick": "button:kick"
+    },
+    "calib": {
+     "dx": 0.20939416380178955,
+     "dy": 0.09796812888976092,
+     "rangeX": 88.83,
+     "rangeY": 89.8,
+     "applied": true
+    },
+    "fidelityByCombo": "rel/world=1.703 rel/rot=1.703 abs/world=0.997 abs/rot=0.997",
+    "metrics": {
+     "offMax": 44.90203187111024,
+     "jumpMax": 0,
+     "fidelity": 0.9969920615117399,
+     "driftKE": 0.4772683065687998,
+     "convVel": "relative/world",
+     "convLocal": false,
+     "dP": 412.37825839373164,
+     "dL": 10078.185603697011,
+     "omegaMax": 0,
+     "I": 0,
+     "s0": 136.9999999999709,
+     "noState": 0,
+     "frames": 342,
+     "nearFrames": 22
+    }
+   },
+   "spin": {
+    "file": "01!_claude48ot_c46_rot.html",
+    "checks": [
+     {
+      "name": "spin coupling",
+      "status": "skip",
+      "value": null,
+      "detail": "state is closure-private; probe the rendered trajectory instead"
+     },
+     {
+      "name": "energy during spin",
+      "status": "skip",
+      "value": null,
+      "detail": "state is closure-private; probe the rendered trajectory instead"
+     }
+    ],
+    "src": "none"
+   },
+   "probe": {
+    "level": "none",
+    "src": "heuristic",
+    "I": null
+   }
+  },
+  {
+   "base": "01!_glm52m_grok45_rot.html",
+   "mtime": 1785730872334.5166,
+   "seconds": 6,
+   "hv": "2",
+   "rot": {
+    "file": "01!_glm52m_grok45_rot.html",
+    "rotate": false,
+    "checks": [
+     {
+      "name": "loads",
+      "status": "pass",
+      "value": 1,
+      "detail": "inline script evaluated in vm"
+     },
+     {
+      "name": "runs without error",
+      "status": "pass",
+      "value": -1,
+      "detail": ""
+     },
+     {
+      "name": "state stays finite",
+      "status": "pass",
+      "value": -1,
+      "detail": ""
+     },
+     {
+      "name": "ball contained in hole1",
+      "status": "pass",
+      "value": 46.528295290536335,
+      "detail": "max max(|dx|,|dy|) 46.528 px vs limit 45 (overshoot 1.53 px), centre calibrated by median, ball range 90x90"
+     },
+     {
+      "name": "no position teleport",
+      "status": "pass",
+      "value": 0,
+      "detail": ""
+     },
+     {
+      "name": "time fidelity",
+      "status": "pass",
+      "value": 0.9896064869991494,
+      "detail": "expected 1.000, got 0.990"
+     },
+     {
+      "name": "kinetic energy",
+      "status": "pass",
+      "value": 0,
+      "detail": "max |dKE|/KE 0.00e+0 [absolute/world reading, 342 free-flight frames; next best 0.00e+0]"
+     },
+     {
+      "name": "linear momentum",
+      "status": "pass",
+      "value": 0,
+      "detail": "max |dP| 0.00e+0 px*m/s"
+     },
+     {
+      "name": "angular momentum (COM)",
+      "status": "warn",
+      "value": 6697.407509418804,
+      "detail": "max |dL| 6.70e+3 — expected only at asymmetric corner contacts"
+     },
+     {
+      "name": "analytic inertia",
+      "status": "skip",
+      "value": null,
+      "detail": "I not exposed"
+     }
+    ],
+    "level": "state",
+    "probe": {
+     "level": "full",
+     "src": "heuristic",
+     "ball": "ball",
+     "body": "sq",
+     "why": ""
+    },
+    "checkbox": 5,
+    "src": "state",
+    "sample": {
+     "reset": "button:btnReset",
+     "conv": "ball-world",
+     "convConf": "high",
+     "kick": "state"
+    },
+    "calib": {
+     "dx": -1.5282952905363345,
+     "dy": -0.0302372532642039,
+     "rangeX": 90,
+     "rangeY": 90,
+     "applied": true
+    },
+    "fidelityByCombo": "rel/world=1.546 rel/rot=1.546 abs/world=0.990 abs/rot=0.990",
+    "metrics": {
+     "offMax": 46.528295290536335,
+     "jumpMax": 0,
+     "fidelity": 0.9896064869991494,
+     "driftKE": 0,
+     "convVel": "absolute/world",
+     "convLocal": false,
+     "dP": 0,
+     "dL": 6697.407509418804,
+     "omegaMax": 0,
+     "I": 0,
+     "s0": 136.18037646009694,
+     "noState": 0,
+     "frames": 342,
+     "nearFrames": 0
+    }
+   },
+   "spin": {
+    "file": "01!_glm52m_grok45_rot.html",
+    "checks": [
+     {
+      "name": "spin coupling",
+      "status": "pass",
+      "value": 2.1368167293031184,
+      "detail": "max |omega| after an off-centre wall hit = 2.137e+0 rad/s"
+     },
+     {
+      "name": "energy during spin",
+      "status": "skip",
+      "value": 0.0014022158352359204,
+      "detail": "I not exposed, rotational term cannot be included"
+     }
+    ],
+    "src": "full",
+    "metrics": {
+     "omegaMax": 2.1368167293031184,
+     "dKE": 0.0014022158352359204,
+     "conv": "world"
+    }
+   },
+   "probe": {
+    "level": "full",
+    "src": "heuristic",
+    "ball": "ball",
+    "body": "sq",
+    "I": null
+   }
+  },
+  {
    "base": "02_hy3+synth.html",
+   "mtime": 1786792313000,
+   "seconds": 6,
+   "hv": "2",
    "rot": {
     "file": "02_hy3+synth.html",
     "rotate": false,
@@ -1762,6 +2511,9 @@
   },
   {
    "base": "02_hy3+synth21.html",
+   "mtime": 1786794038000,
+   "seconds": 6,
+   "hv": "2",
    "rot": {
     "file": "02_hy3+synth21.html",
     "rotate": false,
@@ -1901,6 +2653,9 @@
   },
   {
    "base": "02_hy3+synth22.html",
+   "mtime": 1786794784000,
+   "seconds": 6,
+   "hv": "2",
    "rot": {
     "file": "02_hy3+synth22.html",
     "rotate": false,
@@ -2040,6 +2795,9 @@
   },
   {
    "base": "02_qwen38_27b_ornith1_hermes.html",
+   "mtime": 1786793815436.9539,
+   "seconds": 6,
+   "hv": "2",
    "rot": {
     "file": "02_qwen38_27b_ornith1_hermes.html",
     "rotate": false,
@@ -2174,668 +2932,6 @@
     "src": "heuristic",
     "ball": "ball",
     "body": "obj",
-    "I": null
-   }
-  },
-  {
-   "base": "0_laguna21.html",
-   "rot": {
-    "file": "0_laguna21.html",
-    "rotate": false,
-    "checks": [
-     {
-      "name": "loads",
-      "status": "pass",
-      "value": 1,
-      "detail": "inline script evaluated in vm"
-     },
-     {
-      "name": "runs without error",
-      "status": "pass",
-      "value": -1,
-      "detail": ""
-     },
-     {
-      "name": "state stays finite",
-      "status": "pass",
-      "value": -1,
-      "detail": ""
-     },
-     {
-      "name": "ball contained in hole1",
-      "status": "warn",
-      "value": 48.849752776616555,
-      "detail": "max max(|dx|,|dy|) 48.850 px vs limit 45 (overshoot 3.85 px), centre calibrated by median, ball range 90x90"
-     },
-     {
-      "name": "no position teleport",
-      "status": "pass",
-      "value": 0,
-      "detail": ""
-     },
-     {
-      "name": "time fidelity",
-      "status": "fail",
-      "value": 0.4878542178356805,
-      "detail": "expected 1.000, got 0.488 — sim clock does not track wall clock"
-     },
-     {
-      "name": "kinetic energy",
-      "status": "pass",
-      "value": 0,
-      "detail": "max |dKE|/KE 0.00e+0 [absolute/world reading, 342 free-flight frames; next best 0.00e+0]"
-     },
-     {
-      "name": "linear momentum",
-      "status": "fail",
-      "value": 1922.2504778442444,
-      "detail": "max |dP| 1.92e+3 px*m/s"
-     },
-     {
-      "name": "angular momentum (COM)",
-      "status": "warn",
-      "value": 25590.271907987495,
-      "detail": "max |dL| 2.56e+4 — expected only at asymmetric corner contacts"
-     },
-     {
-      "name": "analytic inertia",
-      "status": "skip",
-      "value": null,
-      "detail": "I not exposed"
-     }
-    ],
-    "level": "state",
-    "probe": {
-     "level": "full",
-     "src": "heuristic",
-     "ball": "ball",
-     "body": "frame",
-     "why": ""
-    },
-    "checkbox": 0,
-    "src": "state",
-    "sample": {
-     "reset": "key:r",
-     "conv": "ball-world",
-     "convConf": "high",
-     "kick": "state"
-    },
-    "calib": {
-     "dx": 3.8497527766165547,
-     "dy": 1.3429139024407277,
-     "rangeX": 90,
-     "rangeY": 89.87,
-     "applied": true
-    },
-    "fidelityByCombo": "rel/world=0.408 rel/rot=0.408 abs/world=0.488 abs/rot=0.488",
-    "metrics": {
-     "offMax": 48.849752776616555,
-     "jumpMax": 0,
-     "fidelity": 0.4878542178356805,
-     "driftKE": 0,
-     "convVel": "absolute/world",
-     "convLocal": false,
-     "dP": 1922.2504778442444,
-     "dL": 25590.271907987495,
-     "omegaMax": 0,
-     "I": 0,
-     "s0": 474.20215611638287,
-     "noState": 0,
-     "frames": 342,
-     "nearFrames": 0
-    }
-   },
-   "spin": {
-    "file": "0_laguna21.html",
-    "checks": [
-     {
-      "name": "spin coupling",
-      "status": "skip",
-      "value": null,
-      "detail": "no writable ball position or omega in state"
-     }
-    ],
-    "src": "full"
-   },
-   "probe": {
-    "level": "full",
-    "src": "heuristic",
-    "ball": "ball",
-    "body": "frame",
-    "I": null
-   }
-  },
-  {
-   "base": "0_qwen36ct.html",
-   "rot": {
-    "file": "0_qwen36ct.html",
-    "rotate": false,
-    "checks": [
-     {
-      "name": "loads",
-      "status": "pass",
-      "value": 1,
-      "detail": "inline script evaluated in vm"
-     },
-     {
-      "name": "runs without error",
-      "status": "pass",
-      "value": -1,
-      "detail": ""
-     },
-     {
-      "name": "state stays finite",
-      "status": "fail",
-      "value": 143,
-      "detail": "non-finite at frame 143"
-     },
-     {
-      "name": "ball contained in hole1",
-      "status": "fail",
-      "value": 58.733333333333064,
-      "detail": "max max(|dx|,|dy|) 58.733 px vs limit 45 (overshoot 13.73 px), centre calibrated by median, ball range 69x95"
-     },
-     {
-      "name": "no position teleport",
-      "status": "fail",
-      "value": 51.965300922827694,
-      "detail": "offset jump 52.0 px"
-     },
-     {
-      "name": "time fidelity",
-      "status": "pass",
-      "value": 1.0506484357578114,
-      "detail": "expected 1.000, got 1.051"
-     },
-     {
-      "name": "kinetic energy",
-      "status": "warn",
-      "value": 49.94181202215754,
-      "detail": "no velocity convention reproduces a constant total energy — rel/world=60.261 rel/rot=60.261 abs/world=49.942 abs/rot=49.942 (velocities from finite differences of the rendered path)"
-     },
-     {
-      "name": "linear momentum",
-      "status": "fail",
-      "value": 1821.9999999999895,
-      "detail": "max |dP| 1.82e+3 px*m/s"
-     },
-     {
-      "name": "angular momentum (COM)",
-      "status": "warn",
-      "value": 22194.99999999932,
-      "detail": "max |dL| 2.22e+4 — expected only at asymmetric corner contacts"
-     },
-     {
-      "name": "analytic inertia",
-      "status": "skip",
-      "value": null,
-      "detail": "I not exposed"
-     }
-    ],
-    "level": "canvas",
-    "probe": {
-     "level": "none",
-     "src": "scalar",
-     "ball": "scalars:ballX,ballY,ballVx,ballVy",
-     "body": "scalars:sqX,sqY,sqVx,sqVy",
-     "why": "no ball-like state found; add an entry to test/lib/adapters.js"
-    },
-    "checkbox": 0,
-    "src": "canvas",
-    "sample": {
-     "reset": "key:r",
-     "conv": "ball-world",
-     "convConf": "canvas",
-     "kick": "key:space"
-    },
-    "calib": {
-     "dx": -11.69999999999959,
-     "dy": 5.599999999999909,
-     "rangeX": 69.1,
-     "rangeY": 95.23,
-     "applied": true
-    },
-    "fidelityByCombo": "rel/world=1.617 rel/rot=1.617 abs/world=1.051 abs/rot=1.051",
-    "metrics": {
-     "offMax": 58.733333333333064,
-     "jumpMax": 51.965300922827694,
-     "fidelity": 1.0506484357578114,
-     "driftKE": 49.94181202215754,
-     "convVel": "absolute/world",
-     "convLocal": false,
-     "dP": 1821.9999999999895,
-     "dL": 22194.99999999932,
-     "omegaMax": 0,
-     "I": 0,
-     "s0": 261.39625092950445,
-     "noState": 0,
-     "frames": 240,
-     "nearFrames": 22
-    }
-   },
-   "spin": {
-    "file": "0_qwen36ct.html",
-    "checks": [
-     {
-      "name": "spin coupling",
-      "status": "skip",
-      "value": null,
-      "detail": "state is closure-private; probe the rendered trajectory instead"
-     }
-    ],
-    "src": "none"
-   },
-   "probe": {
-    "level": "none",
-    "src": "scalar",
-    "ball": "scalars:ballX,ballY,ballVx,ballVy",
-    "body": "scalars:sqX,sqY,sqVx,sqVy",
-    "I": null
-   }
-  },
-  {
-   "base": "0_qwen36t diz.html",
-   "rot": {
-    "file": "0_qwen36t diz.html",
-    "rotate": false,
-    "checks": [
-     {
-      "name": "loads",
-      "status": "pass",
-      "value": 1,
-      "detail": "inline script evaluated in vm"
-     },
-     {
-      "name": "runs without error",
-      "status": "pass",
-      "value": -1,
-      "detail": ""
-     },
-     {
-      "name": "state stays finite",
-      "status": "pass",
-      "value": -1,
-      "detail": ""
-     },
-     {
-      "name": "ball contained in hole1",
-      "status": "fail",
-      "value": 90,
-      "detail": "max max(|dx|,|dy|) 90.000 px vs limit 45 (overshoot 45.00 px), centre calibrated by median, ball range 90x90"
-     },
-     {
-      "name": "no position teleport",
-      "status": "pass",
-      "value": 0,
-      "detail": ""
-     },
-     {
-      "name": "time fidelity",
-      "status": "fail",
-      "value": 12.281327338932822,
-      "detail": "expected 1.000, got 12.281 — sim clock does not track wall clock"
-     },
-     {
-      "name": "kinetic energy",
-      "status": "pass",
-      "value": 0,
-      "detail": "max |dKE|/KE 0.00e+0 [absolute/world reading, 342 free-flight frames; next best 0.00e+0]"
-     },
-     {
-      "name": "linear momentum",
-      "status": "fail",
-      "value": 1240,
-      "detail": "max |dP| 1.24e+3 px*m/s"
-     },
-     {
-      "name": "angular momentum (COM)",
-      "status": "warn",
-      "value": 3333.923551305652,
-      "detail": "max |dL| 3.33e+3 — expected only at asymmetric corner contacts"
-     },
-     {
-      "name": "analytic inertia",
-      "status": "skip",
-      "value": null,
-      "detail": "I not exposed"
-     }
-    ],
-    "level": "state",
-    "probe": {
-     "level": "full",
-     "src": "heuristic",
-     "ball": "ball",
-     "body": "square",
-     "why": ""
-    },
-    "checkbox": 0,
-    "src": "state",
-    "sample": {
-     "reset": "key:r",
-     "conv": "ball-world",
-     "convConf": "high",
-     "kick": "state"
-    },
-    "calib": {
-     "dx": 145,
-     "dy": 145,
-     "rangeX": 90,
-     "rangeY": 90,
-     "applied": true
-    },
-    "fidelityByCombo": "rel/world=12.281 rel/rot=12.281 abs/world=12.281 abs/rot=12.281",
-    "metrics": {
-     "offMax": 90,
-     "jumpMax": 0,
-     "fidelity": 12.281327338932822,
-     "driftKE": 0,
-     "convVel": "absolute/world",
-     "convLocal": false,
-     "dP": 1240,
-     "dL": 3333.923551305652,
-     "omegaMax": 200,
-     "I": 0,
-     "s0": 620,
-     "noState": 0,
-     "frames": 342,
-     "nearFrames": 0
-    }
-   },
-   "spin": {
-    "file": "0_qwen36t diz.html",
-    "checks": [
-     {
-      "name": "spin coupling",
-      "status": "fail",
-      "value": 0,
-      "detail": "max |omega| after an off-centre wall hit = 0.000e+0 rad/s"
-     },
-     {
-      "name": "energy during spin",
-      "status": "skip",
-      "value": 0,
-      "detail": "I not exposed, rotational term cannot be included"
-     }
-    ],
-    "src": "full",
-    "metrics": {
-     "omegaMax": 0,
-     "dKE": 0,
-     "conv": "world"
-    }
-   },
-   "probe": {
-    "level": "full",
-    "src": "heuristic",
-    "ball": "ball",
-    "body": "square",
-    "I": null
-   }
-  },
-  {
-   "base": "0_step37f.html",
-   "rot": {
-    "file": "0_step37f.html",
-    "rotate": false,
-    "checks": [
-     {
-      "name": "loads",
-      "status": "pass",
-      "value": 1,
-      "detail": "inline script evaluated in vm"
-     },
-     {
-      "name": "runs without error",
-      "status": "pass",
-      "value": -1,
-      "detail": ""
-     },
-     {
-      "name": "state stays finite",
-      "status": "pass",
-      "value": -1,
-      "detail": ""
-     },
-     {
-      "name": "ball contained in hole1",
-      "status": "fail",
-      "value": 510.10245593916443,
-      "detail": "max max(|dx|,|dy|) 510.102 px vs limit 45 (overshoot 465.10 px), centre calibrated by median, ball range 1017x1017"
-     },
-     {
-      "name": "no position teleport",
-      "status": "pass",
-      "value": 0,
-      "detail": ""
-     },
-     {
-      "name": "time fidelity",
-      "status": "fail",
-      "value": 59.83057950825308,
-      "detail": "expected 1.000, got 59.831 — sim clock does not track wall clock"
-     },
-     {
-      "name": "kinetic energy",
-      "status": "pass",
-      "value": 0,
-      "detail": "max |dKE|/KE 0.00e+0 [absolute/world reading, 342 free-flight frames; next best 0.00e+0]"
-     },
-     {
-      "name": "linear momentum",
-      "status": "pass",
-      "value": 0,
-      "detail": "max |dP| 0.00e+0 px*m/s"
-     },
-     {
-      "name": "angular momentum (COM)",
-      "status": "warn",
-      "value": 355321.5986152974,
-      "detail": "max |dL| 3.55e+5 — expected only at asymmetric corner contacts"
-     },
-     {
-      "name": "analytic inertia",
-      "status": "skip",
-      "value": null,
-      "detail": "I not exposed"
-     }
-    ],
-    "level": "state",
-    "probe": {
-     "level": "full",
-     "src": "heuristic",
-     "ball": "ball",
-     "body": "square",
-     "why": ""
-    },
-    "checkbox": 0,
-    "src": "state",
-    "sample": {
-     "reset": "key:r",
-     "conv": "ball-world",
-     "convConf": "high",
-     "kick": "state"
-    },
-    "calib": {
-     "dx": -1.628029512977264,
-     "dy": -0.5442200094732925,
-     "rangeX": 1016.68,
-     "rangeY": 1016.82,
-     "applied": true
-    },
-    "fidelityByCombo": "rel/world=84.031 rel/rot=84.031 abs/world=59.831 abs/rot=59.831",
-    "metrics": {
-     "offMax": 510.10245593916443,
-     "jumpMax": 0,
-     "fidelity": 59.83057950825308,
-     "driftKE": 0,
-     "convVel": "absolute/world",
-     "convLocal": false,
-     "dP": 0,
-     "dL": 355321.5986152974,
-     "omegaMax": 200,
-     "I": 0,
-     "s0": 620,
-     "noState": 0,
-     "frames": 342,
-     "nearFrames": 0
-    }
-   },
-   "spin": {
-    "file": "0_step37f.html",
-    "checks": [
-     {
-      "name": "spin coupling",
-      "status": "fail",
-      "value": 0,
-      "detail": "max |omega| after an off-centre wall hit = 0.000e+0 rad/s"
-     },
-     {
-      "name": "energy during spin",
-      "status": "skip",
-      "value": 0,
-      "detail": "I not exposed, rotational term cannot be included"
-     }
-    ],
-    "src": "full",
-    "metrics": {
-     "omegaMax": 0,
-     "dKE": 0,
-     "conv": "world"
-    }
-   },
-   "probe": {
-    "level": "full",
-    "src": "heuristic",
-    "ball": "ball",
-    "body": "square",
-    "I": null
-   }
-  },
-  {
-   "base": "0_step37f_bug_ball_escape.html",
-   "rot": {
-    "file": "0_step37f_bug_ball_escape.html",
-    "rotate": false,
-    "checks": [
-     {
-      "name": "loads",
-      "status": "pass",
-      "value": 1,
-      "detail": "inline script evaluated in vm"
-     },
-     {
-      "name": "runs without error",
-      "status": "pass",
-      "value": -1,
-      "detail": ""
-     },
-     {
-      "name": "state stays finite",
-      "status": "pass",
-      "value": -1,
-      "detail": ""
-     },
-     {
-      "name": "ball contained in hole1",
-      "status": "fail",
-      "value": 132.3101473567449,
-      "detail": "max max(|dx|,|dy|) 132.310 px vs limit 45 (overshoot 87.31 px), centre calibrated by median, ball range 142x137"
-     },
-     {
-      "name": "no position teleport",
-      "status": "pass",
-      "value": 0,
-      "detail": ""
-     },
-     {
-      "name": "time fidelity",
-      "status": "fail",
-      "value": 0.7921267563461573,
-      "detail": "expected 1.000, got 0.792 — sim clock does not track wall clock"
-     },
-     {
-      "name": "kinetic energy",
-      "status": "pass",
-      "value": 0,
-      "detail": "max |dKE|/KE 0.00e+0 [absolute/world reading, 342 free-flight frames; next best 0.00e+0]"
-     },
-     {
-      "name": "linear momentum",
-      "status": "fail",
-      "value": 948.4043122327657,
-      "detail": "max |dP| 9.48e+2 px*m/s"
-     },
-     {
-      "name": "angular momentum (COM)",
-      "status": "warn",
-      "value": 64354.183026164916,
-      "detail": "max |dL| 6.44e+4 — expected only at asymmetric corner contacts"
-     },
-     {
-      "name": "analytic inertia",
-      "status": "skip",
-      "value": null,
-      "detail": "I not exposed"
-     }
-    ],
-    "level": "state",
-    "probe": {
-     "level": "full",
-     "src": "heuristic",
-     "ball": "ball",
-     "body": "square",
-     "why": ""
-    },
-    "checkbox": 0,
-    "src": "state",
-    "sample": {
-     "reset": "key:r",
-     "conv": "ball-world",
-     "convConf": "high",
-     "kick": "state"
-    },
-    "calib": {
-     "dx": -2.366576828487723,
-     "dy": -38.142261869426875,
-     "rangeX": 141.54,
-     "rangeY": 137.34,
-     "applied": true
-    },
-    "fidelityByCombo": "rel/world=0.792 rel/rot=0.792 abs/world=0.436 abs/rot=0.436",
-    "metrics": {
-     "offMax": 132.3101473567449,
-     "jumpMax": 0,
-     "fidelity": 0.7921267563461573,
-     "driftKE": 0,
-     "convVel": "absolute/world",
-     "convLocal": false,
-     "dP": 948.4043122327657,
-     "dL": 64354.183026164916,
-     "omegaMax": 0,
-     "I": 0,
-     "s0": 620,
-     "noState": 0,
-     "frames": 342,
-     "nearFrames": 0
-    }
-   },
-   "spin": {
-    "file": "0_step37f_bug_ball_escape.html",
-    "checks": [
-     {
-      "name": "spin coupling",
-      "status": "skip",
-      "value": null,
-      "detail": "no writable ball position or omega in state"
-     }
-    ],
-    "src": "full"
-   },
-   "probe": {
-    "level": "full",
-    "src": "heuristic",
-    "ball": "ball",
-    "body": "square",
     "I": null
    }
   }

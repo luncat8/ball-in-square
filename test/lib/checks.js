@@ -275,15 +275,16 @@ function spinProbe(file, opts) {
 	const sim = loadSim(file, { fps: 60, seed: 7, warmup: 0.35 });
 	const p = probe(sim);
 	const out = { file: path.basename(file), checks: [], src: p.level };
-	if (sim.info.loadError) { chk(out.checks, 'spin coupling', 'skip', null, 'load failed'); return out; }
-	if (p.level === 'none') { chk(out.checks, 'spin coupling', 'skip', null, 'state is closure-private; probe the rendered trajectory instead'); return out; }
-	setCheckbox(sim, true);
+	const skipAll = why => { chk(out.checks, 'spin coupling', 'skip', null, why); chk(out.checks, 'energy during spin', 'skip', null, why); return out; };
+	if (sim.info.loadError) return skipAll('load failed');
+	if (p.level === 'none') return skipAll('state is closure-private; probe the rendered trajectory instead');
+	if (!setCheckbox(sim, true)) return skipAll('no rotation checkbox in this file (round 0 brief) — free rotation is not implemented, so omega cannot be produced');
 	sim.step(0.3);
 	const rd = stateReader(p, sim.sb);
 	const conv = decideConvention(sim, p, rd, 0.35);
 	rd.refresh();
 	const bs = p.ball && p.ball.set, bod = p.body && p.body.set;
-	if (!bs || !bs.px || !bs.vx || !p.body || !p.body.get.om) { chk(out.checks, 'spin coupling', 'skip', null, 'no writable ball position or omega in state'); return out; }
+	if (!bs || !bs.px || !bs.vx || !p.body || !p.body.get.om) return skipAll('no writable ball position or omega in state');
 	if (bod && bod.om) bod.om(0);
 	if (bod && bod.vx) { bod.vx(0); bod.vy(0); }
 	if (conv.local) { bs.px(0); bs.py(0.45 * LIM_REF); }
