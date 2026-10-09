@@ -316,6 +316,24 @@
 			</ul>
 		</div>
 
+		<div class="card note">
+			<div class="row">
+				<span class="name"><a class="file" href="01-step5prev-1400s.html">01-step5prev-1400s.html</a></span>
+				<span class="tag note">Sound physics, private core</span>
+				<span class="tag ok">Local-frame wrap</span>
+				<span class="tag ok">CCD, no tunneling</span>
+				<span class="tag ok">DPR-aware render</span>
+			</div>
+			<div class="desc">Ball stored in the square's <em>local</em> frame, so only the square wraps and the seam-teleport bug is impossible by construction; a textbook rigid-body restitution impulse with the exact frame inertia <em>I = (SQ²+HOLE²)/6 = 8333.33</em> conserves Σp and ΣKE and couples spin; exact contact-time bisection then reflect (<em>CCD</em>) makes tunneling impossible. Fixed-DT accumulator driven by the real rAF delta. The only entry that honours <em>devicePixelRatio</em>, sizing the canvas to its parent — the HiDPI handling the rest of the set lacks.</div>
+			<ul class="issues">
+				<li><b>Hard check <code>linear momentum</code> FAILS</b> (max |dP| = 33.3 px·m/s) and <b><code>kinetic energy</code></b> warns (best convention 4.3 %, abs 0.225) — but this is a <code>probe:none</code> file: state is a closure-private top-level <code>const</code> (<code>:86-87</code>), so velocities are finite differences of the wrapped + rotated rendered path. The harness README says to treat these as unproven; I name the mechanism (FD across a seam/collision) and verify exact Σp/ΣKE from <code>collide()</code> (<code>:136-159</code>). <b>Not a physics bug</b> — corroborated by the clean position checks: containment 45.560 px (≈ reference 45.503), no teleport, time fidelity 0.998 (better than reference 0.966).</li>
+				<li>Because the core is closure-private, <em>spin coupling</em>, <em>energy during spin</em> and <em>analytic inertia</em> are all skipped (n/a) — the rotation coupling (<code>:151,:157</code>, correct) and <em>I</em> (<code>:80</code> = 8333.33) cannot be machine-checked here, only read.</li>
+				<li>Loads <em>fail</em> out of the box in the headless harness — <code>fit()</code> reads <code>canvas.parentElement</code> (<code>:108</code>, <code>:335</code>), which the sandbox never populates (it sets <code>parentNode</code> only, <code>sandbox.js:129</code> vs <code>:111</code>); no other file uses it. Patched the sandbox to model <code>parentElement</code> and present a 1024 parent box so this file's DPR sizing yields the standard 1024² / scale = 1 canvas. A real browser never trips this.</li>
+				<li>Rotation-off absorbs spin energy: <code>if (!freeRot) sq.va = 0</code> (<code>:217</code>, toggle <code>:328</code>) silently discards rotational KE each step — same behaviour as the reference toggle, and not shown as drift because the HUD prints live E / |p| (<code>:305</code>), not a stored baseline.</li>
+				<li>No <em>|v|</em> cap (common to the set), though the CCD contact solve keeps tunneling out of reach at the ≤ ~283 px/s kick.</li>
+			</ul>
+		</div>
+
 		<h2>Round 2 — synthesised "best of" + extra features</h2>
 		<p class="desc">Later passes that combine ideas from earlier implementations and add presentation features.</p>
 

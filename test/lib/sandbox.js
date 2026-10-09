@@ -126,7 +126,7 @@ function makeElement(tag, doc) {
 		getAttribute(k) { return k in this._attrs ? this._attrs[k] : (this[k] === undefined ? null : this[k]); },
 		hasAttribute(k) { return k in this._attrs; },
 		removeAttribute(k) { delete this._attrs[k]; },
-		appendChild(c) { this.children.push(c); this.childNodes.push(c); c.parentNode = this; return c; },
+		appendChild(c) { this.children.push(c); this.childNodes.push(c); c.parentNode = this; c.parentElement = this; return c; },
 		removeChild(c) { const i = this.children.indexOf(c); if (i >= 0) this.children.splice(i, 1); return c; },
 		insertBefore(c) { return this.appendChild(c); },
 		replaceChild(c) { return this.appendChild(c); },
@@ -219,6 +219,7 @@ function createSandbox(opts) {
 		getElementByIdOrThrow(id) { return this.getElementById(id); }
 	};
 	doc.body = makeElement('body', doc);
+	doc.body.width = 1024; doc.body.height = 1024;
 	doc.documentElement = makeElement('html', doc);
 	doc.head = makeElement('head', doc);
 	doc.defaultView = null;
