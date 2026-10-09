@@ -34,6 +34,10 @@ node test/run.js 01_model.html --vs auto
 
 see `AGENTS.md` for the analyst workflow and `test/README.md` for the harness.
 
+### note
+
+testing LLM using direct chat is different then using agents (kilo, hermes, arena) but usually produce similar general approach to solve task. local models i prefer test in direct chat because available agents has huge system prompt that make it slow and lost attention. Free and preview models tested in kilo.
+
 ### tasks
 
 

@@ -3,7 +3,7 @@
  "hv": "2",
  "I_REF": 8333.333333333332,
  "LIM_REF": 45,
- "generated": "2026-09-26T12:37:21.601Z",
+ "generated": "2026-10-09T17:42:46.346Z",
  "results": [
   {
    "base": "0_laguna21.html",
@@ -1952,7 +1952,7 @@
   {
    "base": "01-space-bunny-Alpha.html",
    "mtime": 1790419982000,
-   "seconds": 6,
+   "seconds": 10,
    "hv": "2",
    "rot": {
     "file": "01-space-bunny-Alpha.html",
@@ -1979,8 +1979,8 @@
      {
       "name": "ball contained in hole1",
       "status": "pass",
-      "value": 44.93418368482954,
-      "detail": "max max(|dx|,|dy|) 44.934 px vs limit 45 (overshoot -0.07 px), centre calibrated by median, ball range 87x90"
+      "value": 45.50306744352635,
+      "detail": "max max(|dx|,|dy|) 45.503 px vs limit 45 (overshoot 0.50 px), centre calibrated by median, ball range 88x90"
      },
      {
       "name": "no position teleport",
@@ -1991,14 +1991,14 @@
      {
       "name": "time fidelity",
       "status": "pass",
-      "value": 0.9642566067343984,
-      "detail": "expected 1.000, got 0.964"
+      "value": 0.9661000689065199,
+      "detail": "expected 1.000, got 0.966"
      },
      {
       "name": "kinetic energy",
       "status": "pass",
       "value": 0,
-      "detail": "max |dKE|/KE 0.00e+0 [relative/world reading, 342 free-flight frames; next best 0.00e+0]"
+      "detail": "max |dKE|/KE 0.00e+0 [relative/world reading, 582 free-flight frames; next best 0.00e+0]"
      },
      {
       "name": "linear momentum",
@@ -2009,8 +2009,8 @@
      {
       "name": "angular momentum (COM)",
       "status": "warn",
-      "value": 34242.96402668419,
-      "detail": "max |dL| 3.42e+4 — expected only at asymmetric corner contacts"
+      "value": 33973.19812173062,
+      "detail": "max |dL| 3.40e+4 — expected only at asymmetric corner contacts"
      },
      {
       "name": "analytic inertia",
@@ -2038,26 +2038,26 @@
     },
     "calib": {
      "dx": 0.4443732944866554,
-     "dy": -0.06581631517144293,
-     "rangeX": 86.94,
+     "dy": -0.6347000738681362,
+     "rangeX": 87.92,
      "rangeY": 89.87,
      "applied": true
     },
-    "fidelityByCombo": "rel/world=0.964 rel/rot=0.964 abs/world=0.598 abs/rot=0.598",
+    "fidelityByCombo": "rel/world=0.966 rel/rot=0.966 abs/world=0.600 abs/rot=0.600",
     "metrics": {
-     "offMax": 44.93418368482954,
+     "offMax": 45.50306744352635,
      "jumpMax": 0,
-     "fidelity": 0.9642566067343984,
+     "fidelity": 0.9661000689065199,
      "driftKE": 0,
      "convVel": "relative/world",
      "convLocal": true,
      "dP": 0,
-     "dL": 34242.96402668419,
+     "dL": 33973.19812173062,
      "omegaMax": 0,
      "I": 8333.333333333334,
      "s0": 620,
      "noState": 0,
-     "frames": 342,
+     "frames": 582,
      "nearFrames": 0
     }
    },
@@ -2090,6 +2090,141 @@
     "ball": "ball",
     "body": "box",
     "I": 8333.333333333334
+   }
+  },
+  {
+   "base": "01-step5prev-1400s.html",
+   "mtime": 1791567113577.541,
+   "seconds": 10,
+   "hv": "2",
+   "rot": {
+    "file": "01-step5prev-1400s.html",
+    "rotate": false,
+    "checks": [
+     {
+      "name": "loads",
+      "status": "pass",
+      "value": 1,
+      "detail": "inline script evaluated in vm"
+     },
+     {
+      "name": "runs without error",
+      "status": "pass",
+      "value": -1,
+      "detail": ""
+     },
+     {
+      "name": "state stays finite",
+      "status": "pass",
+      "value": -1,
+      "detail": ""
+     },
+     {
+      "name": "ball contained in hole1",
+      "status": "pass",
+      "value": 45.55999985694859,
+      "detail": "max max(|dx|,|dy|) 45.560 px vs limit 45 (overshoot 0.56 px), centre calibrated by median, ball range 90x90"
+     },
+     {
+      "name": "no position teleport",
+      "status": "pass",
+      "value": 0,
+      "detail": ""
+     },
+     {
+      "name": "time fidelity",
+      "status": "pass",
+      "value": 0.998259359523681,
+      "detail": "expected 1.000, got 0.998"
+     },
+     {
+      "name": "kinetic energy",
+      "status": "warn",
+      "value": 0.22546425744838539,
+      "detail": "no velocity convention reproduces a constant total energy — rel/world=1.043 rel/rot=1.043 abs/world=0.225 abs/rot=0.225 (velocities from finite differences of the rendered path)"
+     },
+     {
+      "name": "linear momentum",
+      "status": "fail",
+      "value": 33.33766638507279,
+      "detail": "max |dP| 3.33e+1 px*m/s"
+     },
+     {
+      "name": "angular momentum (COM)",
+      "status": "warn",
+      "value": 13065.480007243603,
+      "detail": "max |dL| 1.31e+4 — expected only at asymmetric corner contacts"
+     },
+     {
+      "name": "analytic inertia",
+      "status": "skip",
+      "value": null,
+      "detail": "I not exposed"
+     }
+    ],
+    "level": "canvas",
+    "probe": {
+     "level": "none",
+     "src": "heuristic",
+     "body": "sq",
+     "why": "no ball-like state found; add an entry to test/lib/adapters.js"
+    },
+    "checkbox": 1,
+    "src": "canvas",
+    "sample": {
+     "reset": "key:r",
+     "conv": "ball-world",
+     "convConf": "canvas",
+     "kick": "key:space"
+    },
+    "calib": {
+     "dx": -0.10000011821580301,
+     "dy": 0.779999889135297,
+     "rangeX": 89.58,
+     "rangeY": 89.76,
+     "applied": true
+    },
+    "fidelityByCombo": "rel/world=1.239 rel/rot=1.239 abs/world=0.998 abs/rot=0.998",
+    "metrics": {
+     "offMax": 45.55999985694859,
+     "jumpMax": 0,
+     "fidelity": 0.998259359523681,
+     "driftKE": 0.22546425744838539,
+     "convVel": "absolute/world",
+     "convLocal": false,
+     "dP": 33.33766638507279,
+     "dL": 13065.480007243603,
+     "omegaMax": 0,
+     "I": 0,
+     "s0": 284.0070421662252,
+     "noState": 0,
+     "frames": 582,
+     "nearFrames": 34
+    }
+   },
+   "spin": {
+    "file": "01-step5prev-1400s.html",
+    "checks": [
+     {
+      "name": "spin coupling",
+      "status": "skip",
+      "value": null,
+      "detail": "state is closure-private; probe the rendered trajectory instead"
+     },
+     {
+      "name": "energy during spin",
+      "status": "skip",
+      "value": null,
+      "detail": "state is closure-private; probe the rendered trajectory instead"
+     }
+    ],
+    "src": "none"
+   },
+   "probe": {
+    "level": "none",
+    "src": "heuristic",
+    "body": "sq",
+    "I": null
    }
   },
   {
