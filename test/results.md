@@ -18,6 +18,7 @@ field 1024x1024 wrap xy, ball d=10 m=1, square1 200x200 hole 100x100 m=1, I_ref=
 | `01_ornith15.html` | ball-only | ok   (1.000) | ok   (-1.000) | ok   (-1.000) | --   | --   (0) | --   | ok   (0) | ok   (0) | warn | --   |
 | `01_qwen38_27b_hermes.html` | full | ok   (1.000) | ok   (-1.000) | ok   (-1.000) | ok   (45.891) | ok   (0) | ok   (0.970) | ok   (0) | ok   (0) | warn (20831.531) | --   |
 | `01_qwen38_27b_i4.htm` | full | ok   (1.000) | ok   (-1.000) | ok   (-1.000) | ok   (46.003) | ok   (0) | ok   (0.972) | ok   (0) | ok   (0) | warn (14005.035) | --   |
+| `01-beam-1.0-fast.html` | none | ok   (1.000) | ok   (-1.000) | ok   (-1.000) | warn (47.200) | ok   (0) | ok   (0.998) | warn (0.346) | ok   (2.73e-11) | warn (5544.000) | --   |
 | `01-space-bunny-Alpha.html` | full | ok   (1.000) | ok   (-1.000) | ok   (-1.000) | ok   (45.503) | ok   (0) | ok   (0.966) | ok   (0) | ok   (0) | warn (33973.198) | ok   (8333.333) |
 | `01-step5prev-1400s.html` | none | ok   (1.000) | ok   (-1.000) | ok   (-1.000) | ok   (45.560) | ok   (0) | ok   (0.998) | warn (0.225) | FAIL (33.338) | warn (13065.480) | --   |
 | `01!_claude48ot_c46_rot.html` | none | ok   (1.000) | ok   (-1.000) | ok   (-1.000) | ok   (44.902) | ok   (0) | ok   (0.997) | warn (0.477) | FAIL (412.378) | warn (10078.186) | --   |
@@ -26,6 +27,7 @@ field 1024x1024 wrap xy, ball d=10 m=1, square1 200x200 hole 100x100 m=1, I_ref=
 | `02_hy3+synth21.html` | full | ok   (1.000) | ok   (-1.000) | ok   (-1.000) | ok   (45.335) | ok   (0) | ok   (0.968) | ok   (0) | ok   (0) | warn (31328.938) | --   |
 | `02_hy3+synth22.html` | full | ok   (1.000) | ok   (-1.000) | ok   (-1.000) | ok   (45.335) | ok   (0) | ok   (0.968) | ok   (0) | ok   (0) | warn (31328.938) | --   |
 | `02_qwen38_27b_ornith1_hermes.html` | full | ok   (1.000) | ok   (-1.000) | ok   (-1.000) | ok   (45.891) | ok   (0) | ok   (0.970) | ok   (0) | ok   (0) | warn (20831.531) | --   |
+| `beam_exposed.html` | full | ok   (1.000) | ok   (-1.000) | ok   (-1.000) | ok   (44.357) | ok   (0) | ok   (0.962) | ok   (0) | ok   (0) | warn (24605.974) | ok   (8333.333) |
 
 | file | spin coupling | energy during spin |
 |---|---|---|
@@ -43,6 +45,7 @@ field 1024x1024 wrap xy, ball d=10 m=1, square1 200x200 hole 100x100 m=1, I_ref=
 | `01_ornith15.html` | --   | --   |
 | `01_qwen38_27b_hermes.html` | ok   (1.964) | --   (0.016) |
 | `01_qwen38_27b_i4.htm` | ok   (2.355) | --   (0.021) |
+| `01-beam-1.0-fast.html` | --   | --   |
 | `01-space-bunny-Alpha.html` | ok   (0.791) | warn (3.33e-4) |
 | `01-step5prev-1400s.html` | --   | --   |
 | `01!_claude48ot_c46_rot.html` | --   | --   |
@@ -51,4 +54,5 @@ field 1024x1024 wrap xy, ball d=10 m=1, square1 200x200 hole 100x100 m=1, I_ref=
 | `02_hy3+synth21.html` | ok   (3.413) | --   (0.030) |
 | `02_hy3+synth22.html` | ok   (3.413) | --   (0.030) |
 | `02_qwen38_27b_ornith1_hermes.html` | ok   (1.964) | --   (0.016) |
+| `beam_exposed.html` | ok   (2.107) | ok   (2.22e-16) |
 

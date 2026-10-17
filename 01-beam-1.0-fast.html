@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>square hole bounce</title>
+<style>
+body { margin:0; background:#111; color:#eee; font-family:sans-serif; }
+#wrap { display:flex; flex-direction:column; align-items:center; }
+canvas { border:1px solid #444; }
+label { margin:8px; font-size:16px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+<label><input type="checkbox" id="rot"> rotation (free)</label>
+<canvas id="c" width="1024" height="1024"></canvas>
+</div>
+<script>
+(function(){
+	var W=1024;
+	var canvas=document.getElementById('c');
+	var ctx=canvas.getContext('2d');
+	var rotCb=document.getElementById('rot');
+
+	var body={x:512,y:512,theta:0,vx:0,vy:0,omega:0};
+	var ball={x:512,y:512,vx:120,vy:80,r:5};
+
+	var M=1, m=1, I=8333.3333333333;
+	var outer=200, hole=100;
+
+	function rot(px,py,a){ var c=Math.cos(a), s=Math.sin(a); return {x:px*c - py*s, y:px*s + py*c}; }
+
+	function walls(){
+		var h=hole/2;
+		return [
+			{a:{x:-h,y:-h}, b:{x:-h,y:h}, n:{x:1,y:0}},
+			{a:{x:h,y:-h}, b:{x:h,y:h}, n:{x:-1,y:0}},
+			{a:{x:-h,y:h}, b:{x:h,y:h}, n:{x:0,y:-1}},
+			{a:{x:-h,y:-h}, b:{x:h,y:-h}, n:{x:0,y:1}}
+		];
+	}
+
+	function toWorld(p){ var r=rot(p.x,p.y,body.theta); return {x:body.x+r.x, y:body.y+r.y}; }
+	function nWorld(n){ return rot(n.x,n.y,body.theta); }
+
+	function closestSeg(ax,ay,bx,by,px,py){
+		var abx=bx-ax, aby=by-ay;
+		var denom=abx*abx+aby*aby;
+		var t=((px-ax)*abx+(py-ay)*aby)/denom;
+		if(t<0) t=0; if(t>1) t=1;
+		return {x:ax+abx*t, y:ay+aby*t};
+	}
+
+	function substep(dt){
+		body.x += body.vx*dt;
+		body.y += body.vy*dt;
+		if(rotCb.checked){
+			body.theta += body.omega*dt;
+		} else {
+			body.omega=0;
+		}
+		ball.x += ball.vx*dt;
+		ball.y += ball.vy*dt;
+
+		var ws=walls();
+		for(var wi=0; wi<ws.length; wi++){
+			var w=ws[wi];
+			var a=toWorld(w.a), b=toWorld(w.b);
+			var n=nWorld(w.n);
+			var cp=closestSeg(a.x,a.y,b.x,b.y,ball.x,ball.y);
+			var dcenter=(ball.x-cp.x)*n.x + (ball.y-cp.y)*n.y;
+			var pen=ball.r - dcenter;
+			if(pen > 0){
+				var rx=cp.x-body.x, ry=cp.y-body.y;
+				var vbx=body.vx;
+				var vby=body.vy;
+				if(rotCb.checked){
+					vbx += -body.omega*ry;
+					vby += body.omega*rx;
+				}
+				var vrx=ball.vx-vbx;
+				var vry=ball.vy-vby;
+				var vrn=vrx*n.x + vry*n.y;
+				if(vrn < 0){
+					var cross=rx*n.y - ry*n.x;
+					var denom;
+					if(rotCb.checked){
+						denom=1/m + 1/M + (cross*cross)/I;
+					} else {
+						denom=1/m + 1/M;
+					}
+					var J=-(1+1)*vrn/denom;
+					ball.vx += (J/m)*n.x;
+					ball.vy += (J/m)*n.y;
+					body.vx -= (J/M)*n.x;
+					body.vy -= (J/M)*n.y;
+					if(rotCb.checked){
+						body.omega -= (J/I)*cross;
+					}
+				}
+				var total=M+m;
+				ball.x += n.x*pen*(M/total);
+				ball.y += n.y*pen*(M/total);
+				body.x -= n.x*pen*(m/total);
+				body.y -= n.y*pen*(m/total);
+			}
+		}
+	}
+
+	var last=performance.now();
+	function loop(now){
+		var frameDt=Math.min((now-last)/1000,0.05);
+		last=now;
+		var sub=10;
+		var dt=frameDt/sub;
+		for(var i=0;i<sub;i++) substep(dt);
+
+		ctx.fillStyle='#0a0a0a';
+		ctx.fillRect(0,0,W,W);
+
+		var cxw=((body.x % W)+W)%W;
+		var cyw=((body.y % W)+W)%W;
+		for(var oy=-1; oy<=1; oy++){
+			for(var ox=-1; ox<=1; ox++){
+				var cx=cxw + ox*W;
+				var cy=cyw + oy*W;
+				ctx.save();
+				ctx.translate(cx,cy);
+				ctx.rotate(body.theta);
+				ctx.fillStyle='#3a6';
+				ctx.fillRect(-outer/2,-outer/2,outer,outer);
+				ctx.fillStyle='#0a0a0a';
+				ctx.fillRect(-hole/2,-hole/2,hole,hole);
+				ctx.restore();
+			}
+		}
+
+		var bx=((ball.x % W)+W)%W;
+		var by=((ball.y % W)+W)%W;
+		for(var oy=-1; oy<=1; oy++){
+			for(var ox=-1; ox<=1; ox++){
+				ctx.beginPath();
+				ctx.arc(bx+ox*W, by+oy*W, ball.r, 0, Math.PI*2);
+				ctx.fillStyle='#f44';
+				ctx.fill();
+			}
+		}
+		requestAnimationFrame(loop);
+	}
+	requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

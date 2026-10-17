@@ -334,6 +334,22 @@
 			</ul>
 		</div>
 
+		<div class="card note">
+			<div class="row">
+				<span class="name"><a class="file" href="01-beam-1.0-fast.html">01-beam-1.0-fast.html</a></span>
+				<span class="tag note">Sound physics, private core</span>
+				<span class="tag ok">Impulse coupling</span>
+				<span class="tag ok">9-tile render</span>
+			</div>
+			<div class="desc">Textbook two-body impulse with the exact frame inertia <em>I = (SQ²+HOLE²)/6 = 8333.33</em> (<code>:28</code>): restitution <em>e = 1</em>, mass + rotational denominator <code>:87-88</code>, lever-arm torque <code>:98</code>, and a mass-weighted positional correction <code>:101-105</code>. The square and ball are both drawn in a 3×3 toroidal tile set, and wrap is handled as an unfolded plane (physics positions are never wrapped, only the render is), so the seam-teleport bug cannot occur. Fixed 10 sub-steps per frame driven by the real rAF delta.</div>
+			<ul class="issues">
+				<li><b>Hard checks are unverifiable as shipped</b> — the state is a closure-private top-level <code>const</code> (<code>:25-26</code>), so the harness only sees the canvas: it reports <code>ball contained in hole1</code> warn (max 47.200 px) and <code>kinetic energy</code> warn (no convention reproduces a constant). Exposing <code>body</code>/<code>ball</code>/<code>I</code> (temp copy, no code change) clears every hard check: containment 44.357 px, |dP| 0, |dKE|/KE 0, spin coupling 2.107 rad/s, energy during spin 2.22e-16, inertia 8333.33 — the warns are FD/seam artefacts, not physics bugs.</li>
+				<li>No conservation HUD, no <em>|v|</em> cap, no CCD beyond the 10 sub-steps, and no DPR scaling (common to the set).</li>
+				<li>Positional correction splits by mass only (<code>:101-105</code>) and ignores the contact lever arm / rotational inertia, so a very fast hit can leave residual penetration; corner contacts are resolved one wall at a time via <code>closestSeg</code> (<code>:46-52</code>) with that wall's normal, not a corner normal.</li>
+				<li>Rotation-off zeroes <code>body.omega</code> each sub-step (<code>:60</code>), silently discarding rotational KE on toggle — same behaviour as the reference toggle, and not reported as drift because there is no stored baseline.</li>
+			</ul>
+		</div>
+
 		<h2>Round 2 — synthesised "best of" + extra features</h2>
 		<p class="desc">Later passes that combine ideas from earlier implementations and add presentation features.</p>
 
